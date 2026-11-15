@@ -80,6 +80,7 @@ _MANIFEST_LIMITATIONS = frozenset({
     "semgrep_json_not_collected", "semgrep_timeout_without_json", "semgrep_output_limit",
     "invalid_json_after_failed_execution", "invalid_json", "scope_capture_failed",
     "adapter_scope_evidence_not_provided", "manifest_capture_failed",
+    "symbolic_links_not_followed",
 })
 
 

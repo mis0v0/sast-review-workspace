@@ -105,7 +105,7 @@ The timed-out row fixes a separate defect found in A3: the registry refused to r
 
 - Semgrep still has no OS-level isolation. Scan untrusted repositories only inside a separately isolated environment.
 - `.semgrepignore` and inline `nosemgrep` comments are controlled by the target and can reduce coverage. In the normal scan this is not visible; in the investigation run an ignore-file skip makes the scan `partial`.
-- A `.semgrepignore` can be a link to a file outside the target or pull one in with `:include`. Semgrep reads that file. It can only add ignore rules, with the same effect as rules written in the target. The API rejects a linked ignore file with every other link; `:include` is not rejected.
+- A `.semgrepignore` can be a link to a file outside the target or pull one in with `:include`. Semgrep reads that file. It can only add ignore rules, with the same effect as rules written in the target. The API rejects a `.semgrepignore` that is not a regular file (see [A5](a5-safe-symlink-handling.md)); `:include` is not rejected.
 - A `.semgrepignore` in a parent folder above the target is honoured when that parent is a Git repository. A target that itself sits below a parent repository's `node_modules/` is excluded entirely and returns `partial` with no files scanned.
 - Git repositories that have a default-ignored build output on disk (`dist/`, `build/`) and no `.semgrepignore` are `partial` in the investigation run. Before A4, Git hid that folder and the run was `completed`.
 - A regular file named exactly `.git`, `node_modules` or `.venv` is excluded like a folder.

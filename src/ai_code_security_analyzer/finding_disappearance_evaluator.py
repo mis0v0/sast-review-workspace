@@ -323,7 +323,7 @@ def _manifest_is_valid(manifest: object) -> bool:
         "manifest_byte_limit_exceeded", "adapter_scope_evidence_not_provided", "manifest_capture_failed",
         "scope_evidence_unavailable", "scope_evidence_not_collected", "semgrep_json_not_collected",
         "semgrep_timeout_without_json", "semgrep_output_limit", "invalid_json_after_failed_execution",
-        "invalid_json", "scope_capture_failed",
+        "invalid_json", "scope_capture_failed", "symbolic_links_not_followed",
     }
     if not isinstance(manifest.limitations, tuple) or len(manifest.limitations) > 64 or any(
         not isinstance(item, str) or item not in known_manifest_limitations for item in manifest.limitations

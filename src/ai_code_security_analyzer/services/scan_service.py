@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import os
 import re
+import stat
 import threading
 import time
 import unicodedata
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable
 from urllib.parse import urlsplit
@@ -28,9 +29,11 @@ from ai_code_security_analyzer.evidence_summary import (
 )
 from ai_code_security_analyzer.models import Finding, FindingStatus, Severity
 from ai_code_security_analyzer.scan_evidence_manifest import (
+    ADAPTER_EXCLUDED_NAMES,
     INVESTIGATION_VERBOSE_INVOCATION_ID,
     INVOCATION_ID,
     RULE_BYTES_INVOCATION_ID,
+    SYMBOLIC_LINKS_NOT_FOLLOWED,
     ScanEvidenceManifest,
     ScopeEvidence,
     create_scan_evidence_manifest,
@@ -209,6 +212,15 @@ _TAINT_RULE_IDS = frozenset(_TRUSTED_RULES)
 _MAX_FINDINGS = 50
 _MAX_TARGET_ENTRIES = 100_000
 _TARGET_PREFLIGHT_TIMEOUT_SECONDS = 5
+_IGNORE_FILE_NAME = ".semgrepignore"
+_GIT_METADATA_NAME = ".git"
+_EXCLUDED_NAME_SET = frozenset(ADAPTER_EXCLUDED_NAMES)
+
+
+def _note_unfollowed_links(scope: ScopeEvidence, links_seen: bool) -> ScopeEvidence:
+    if not links_seen or SYMBOLIC_LINKS_NOT_FOLLOWED in scope.limitations:
+        return scope
+    return replace(scope, limitations=(*scope.limitations, SYMBOLIC_LINKS_NOT_FOLLOWED))
 
 
 class ScanService:
@@ -257,7 +269,7 @@ class ScanService:
             try:
                 # Recheck the allowlist paths immediately before handing them to
                 # the adapter; this narrows but cannot eliminate filesystem races.
-                target = self._revalidate_target(registered)
+                target, links_seen = self._revalidate_target(registered)
                 rules_file = self._rules_file(profile)
                 adapter = self.adapter_factory(self.settings.trusted_rules_directory)
                 if investigation_verbose:
@@ -274,6 +286,7 @@ class ScanService:
             scope = getattr(output, "scope_evidence", None)
             if not isinstance(scope, ScopeEvidence):
                 scope = unavailable_scope_evidence("adapter_scope_evidence_not_provided")
+            scope = _note_unfollowed_links(scope, links_seen)
             output_exit_code = getattr(output.result, "exit_code", None)
             if type(output_exit_code) is not int:
                 output_exit_code = None
@@ -336,7 +349,7 @@ class ScanService:
             raise ServiceError(409, "scan_already_running")
         try:
             scan_ref = new_scan_ref()
-            target = self._revalidate_target(registered)
+            target, links_seen = self._revalidate_target(registered)
             rules_file = self._rules_file(profile)
             bound = _scan_with_rule_copy(target, self.settings.trusted_rules_directory)
             output = bound.output
@@ -346,6 +359,7 @@ class ScanService:
             scope = output.scope_evidence if isinstance(output.scope_evidence, ScopeEvidence) else unavailable_scope_evidence(
                 "adapter_scope_evidence_not_provided"
             )
+            scope = _note_unfollowed_links(scope, links_seen)
             exit_code = output.result.exit_code if type(output.result.exit_code) is int else None
             manifest = create_scan_evidence_manifest(
                 scan_ref=scan_ref,
@@ -378,7 +392,7 @@ class ScanService:
         finally:
             self._scan_lock.release()
 
-    def _revalidate_target(self, registered: RegisteredProject) -> Path:
+    def _revalidate_target(self, registered: RegisteredProject) -> tuple[Path, bool]:
         configured = registered.directory
         _reject_symlink_components(configured)
         target = configured.resolve(strict=True)
@@ -391,21 +405,44 @@ class ScanService:
             for item in self.settings.registered_targets
         ):
             raise ValueError("target_configuration_ambiguous")
-        stat = target.stat()
-        if stat.st_dev != registered.device or stat.st_ino != registered.inode:
+        target_stat = target.stat()
+        if target_stat.st_dev != registered.device or target_stat.st_ino != registered.inode:
             raise ValueError("target_changed")
-        # Refuse symlinks anywhere below the selected root; this is a conservative
-        # check, not an OS-level sandbox and cannot eliminate concurrent races.
+        # Symbolic links below the root are allowed but never followed, here or
+        # by Semgrep, and their presence is recorded in the scope evidence.
+        # Semgrep reads every ``.semgrepignore`` it finds, also inside the
+        # dependency folders the adapter excludes from scanning (not inside
+        # ``.git``), and it reads through a link. Such a file must therefore be
+        # a regular file wherever Semgrep looks. Entries inside excluded folders
+        # are not scanned and do not count toward the entry limit; the time
+        # budget covers the whole walk. This is a bounded check, not an OS-level
+        # sandbox, and cannot eliminate concurrent races.
         deadline = time.monotonic() + _TARGET_PREFLIGHT_TIMEOUT_SECONDS
         entries_seen = 0
+        links_seen = False
+        target_text = str(target)
         for root, directories, files in os.walk(target, followlinks=False):
-            root_path = Path(root)
-            entries_seen += len(directories) + len(files)
+            below_root = root[len(target_text):].split(os.sep)
+            scanned_folder = _EXCLUDED_NAME_SET.isdisjoint(below_root)
+            if scanned_folder:
+                entries_seen += len(directories) + len(files)
             if entries_seen > _MAX_TARGET_ENTRIES or time.monotonic() > deadline:
                 raise ValueError("target_preflight_limit")
-            if any((root_path / item).is_symlink() for item in (*directories, *files)):
-                raise ValueError("target_symlink_not_allowed")
-        return target
+            # Ask the filesystem for the name instead of comparing listed names:
+            # on a case-insensitive or normalizing filesystem Semgrep opens
+            # ``.SEMGREPIGNORE`` as its ignore file too.
+            try:
+                ignore_file_mode = os.lstat(os.path.join(root, _IGNORE_FILE_NAME)).st_mode
+            except FileNotFoundError:
+                ignore_file_mode = None
+            if ignore_file_mode is not None and not stat.S_ISREG(ignore_file_mode):
+                raise ValueError("target_ignore_file_not_regular")
+            if scanned_folder:
+                for name in (*directories, *files):
+                    if name not in _EXCLUDED_NAME_SET and stat.S_ISLNK(os.lstat(os.path.join(root, name)).st_mode):
+                        links_seen = True
+            directories[:] = [item for item in directories if item != _GIT_METADATA_NAME]
+        return target, links_seen
 
     def _rules_file(self, profile: RuleProfile) -> Path:
         root = self.settings.trusted_rules_directory
