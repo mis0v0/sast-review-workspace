@@ -1,3 +1,4 @@
+import { readServerInstanceId } from './serverInstance';
 import { ApiError } from './client';
 import { parseScan, type ScanResponse } from './types';
 
@@ -165,7 +166,7 @@ async function post(path: string, token: string, body: object, signal?: AbortSig
       const value: unknown = await response.json();
       if (isRecord(value) && exactKeys(value, ['error']) && typeof value.error === 'string' && errorCodes.has(value.error)) code = value.error;
     } catch { /* Keep the closed generic code. */ }
-    throw new ApiError(response.status, code);
+    throw new ApiError(response.status, code, readServerInstanceId(response));
   }
   return response;
 }
@@ -175,14 +176,17 @@ async function jsonResponse(response: Response): Promise<unknown> {
   catch { throw new ApiError(response.status, 'invalid_api_response'); }
 }
 
+/** An investigation scan together with the server instance that holds its evidence. */
+export type AttestedInvestigationScan = InvestigationScan & { readonly serverInstanceId: string | null };
+
 export const investigationApi = {
-  async scan(token: string, targetId: string, ruleProfileId: string, signal?: AbortSignal): Promise<InvestigationScan> {
+  async scan(token: string, targetId: string, ruleProfileId: string, signal?: AbortSignal): Promise<AttestedInvestigationScan> {
     const response = await post('/api/v2/investigation-scans', token, { target_id: targetId, rule_profile_id: ruleProfileId }, signal);
-    return parseInvestigationScan(await jsonResponse(response));
+    return { ...parseInvestigationScan(await jsonResponse(response)), serverInstanceId: readServerInstanceId(response) };
   },
-  async scanWithRuleBytes(token: string, targetId: string, ruleProfileId: string, signal?: AbortSignal): Promise<InvestigationScan> {
+  async scanWithRuleBytes(token: string, targetId: string, ruleProfileId: string, signal?: AbortSignal): Promise<AttestedInvestigationScan> {
     const response = await post('/api/v2/investigation-scans/rule-bytes', token, { target_id: targetId, rule_profile_id: ruleProfileId }, signal);
-    return parseInvestigationScan(await jsonResponse(response));
+    return { ...parseInvestigationScan(await jsonResponse(response)), serverInstanceId: readServerInstanceId(response) };
   },
   async createSession(token: string, baselineHandle: string, currentHandle: string, signal?: AbortSignal): Promise<InvestigationSession> {
     parseHandle(baselineHandle); parseHandle(currentHandle);

@@ -19,7 +19,7 @@ const scan = (findings: ApiFinding[] = []): ScanResponse => ({
 
 const context = (overrides: Partial<ScanContext> = {}): ScanContext => ({
   targetId: 'project-a', targetLabel: 'Project A', ruleProfileId: 'baseline', ruleProfileLabel: 'Baseline',
-  experimental: false, scanStatus: 'completed', receivedAt: '2026-10-31T01:00:00.000Z', ...overrides,
+  experimental: false, scanStatus: 'completed', receivedAt: '2026-10-31T01:00:00.000Z', serverInstanceId: 'test-server-instance-01', ...overrides,
 });
 
 const snapshot = (findings: ApiFinding[] = [], scanOverrides: Partial<ScanResponse> = {}, contextOverrides: Partial<ScanContext> = {}): ScanSnapshot => ({

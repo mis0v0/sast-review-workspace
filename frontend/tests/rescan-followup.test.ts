@@ -37,7 +37,7 @@ const snapshot = (response: ScanResponse, context: Partial<ScanSnapshot['context
   context: {
     targetId: 'project-a', targetLabel: 'Project A', ruleProfileId: 'baseline',
     ruleProfileLabel: 'Baseline Rules', experimental: false, scanStatus: response.scan_status,
-    receivedAt: '2026-11-03T00:00:00.000Z', ...context,
+    receivedAt: '2026-11-03T00:00:00.000Z', serverInstanceId: 'test-server-instance-01', ...context,
   },
 });
 

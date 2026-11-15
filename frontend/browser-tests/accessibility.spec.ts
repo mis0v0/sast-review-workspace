@@ -3,6 +3,9 @@ import { expect, test, type Page } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
+// Every mocked API response names one server process, as the real server does.
+const MOCK_SERVER = { 'X-Server-Instance': 'mock-server-instance-01' };
+
 const evidenceDir = resolve(process.cwd(), '../docs/assets/phase8g');
 
 const finding = {
@@ -29,12 +32,12 @@ function scan(overrides: Record<string, unknown> = {}) {
 }
 
 async function fixture(page: Page, response: Record<string, unknown> = scan()) {
-  await page.route('**/api/v1/health', (route) => route.fulfill({ json: { status: 'ok', service: 'ai-code-security-analyzer' } }));
-  await page.route('**/api/v1/options', (route) => route.fulfill({ json: {
+  await page.route('**/api/v1/health', (route) => route.fulfill({ headers: MOCK_SERVER, json: { status: 'ok', service: 'ai-code-security-analyzer' } }));
+  await page.route('**/api/v1/options', (route) => route.fulfill({ headers: MOCK_SERVER, json: {
     targets: [{ id: 'synthetic-project', label: 'Synthetic Review Project' }],
     rule_profiles: [{ id: 'baseline', label: 'Baseline Rules', experimental: false }],
   } }));
-  await page.route('**/api/v1/scans', (route) => route.fulfill({ json: response }));
+  await page.route('**/api/v1/scans', (route) => route.fulfill({ headers: MOCK_SERVER, json: response }));
 }
 
 async function runScan(page: Page) {
@@ -148,7 +151,7 @@ test('axe: 부분 검사 및 Finding 0건 상태', async ({ page }) => {
   await expectAxeClean(page, '부분 검사');
 
   await page.reload();
-  await page.route('**/api/v1/scans', (route) => route.fulfill({ json: scan({ finding_count: 0, displayed_finding_count: 0, omitted_finding_count: 0, severity_counts: { critical: 0, high: 0, medium: 0, low: 0, info: 0 }, findings: [] }) }));
+  await page.route('**/api/v1/scans', (route) => route.fulfill({ headers: MOCK_SERVER, json: scan({ finding_count: 0, displayed_finding_count: 0, omitted_finding_count: 0, severity_counts: { critical: 0, high: 0, medium: 0, low: 0, info: 0 }, findings: [] }) }));
   await runScan(page);
   await page.getByRole('navigation', { name: '화면 이동' }).getByRole('button', { name: '검사 결과' }).click();
   await expect(page.getByRole('heading', { name: '발견 항목이 없습니다' })).toBeVisible();

@@ -1,5 +1,8 @@
 import { expect, test } from '@playwright/test';
 
+// Every mocked API response names one server process, as the real server does.
+const MOCK_SERVER = { 'X-Server-Instance': 'mock-server-instance-01' };
+
 const emptyScan = {
   scan_status: 'completed', completed: true, semgrep_version: '1.182.1',
   finding_count: 0, displayed_finding_count: 0, omitted_finding_count: 0,
@@ -22,8 +25,8 @@ const scanWith = (findings: ReturnType<typeof finding>[]) => ({
 const opaque = (letter: string) => letter.repeat(43);
 
 async function bootstrap(page: import('@playwright/test').Page) {
-  await page.route('**/api/v1/health', (route) => route.fulfill({ json: { status: 'ok', service: 'ai-code-security-analyzer' } }));
-  await page.route('**/api/v1/options', (route) => route.fulfill({ json: {
+  await page.route('**/api/v1/health', (route) => route.fulfill({ headers: MOCK_SERVER, json: { status: 'ok', service: 'ai-code-security-analyzer' } }));
+  await page.route('**/api/v1/options', (route) => route.fulfill({ headers: MOCK_SERVER, json: {
     targets: [{ id: 'local-project', label: 'Synthetic Project' }],
     rule_profiles: [{ id: 'baseline', label: 'Baseline Rules', experimental: false }],
   } }));
@@ -33,8 +36,8 @@ test('regular zero-Finding workflow never calls v2 and never presents safety pro
   await bootstrap(page);
   let v1Calls = 0;
   let v2Calls = 0;
-  await page.route('**/api/v1/scans', (route) => { v1Calls += 1; return route.fulfill({ json: emptyScan }); });
-  await page.route('**/api/v2/**', (route) => { v2Calls += 1; return route.fulfill({ status: 500, json: { error: 'internal_unavailable' } }); });
+  await page.route('**/api/v1/scans', (route) => { v1Calls += 1; return route.fulfill({ headers: MOCK_SERVER, json: emptyScan }); });
+  await page.route('**/api/v2/**', (route) => { v2Calls += 1; return route.fulfill({ headers: MOCK_SERVER, status: 500, json: { error: 'internal_unavailable' } }); });
 
   await page.goto('/');
   await page.getByRole('navigation', { name: '화면 이동' }).getByRole('button', { name: /검사 시작/ }).click();
@@ -63,12 +66,12 @@ test('a delayed evaluation cannot survive baseline release or overwrite the curr
     const path = new URL(route.request().url()).pathname;
     if (path === '/api/v2/investigation-scans') {
       const index = scanIndex++;
-      return route.fulfill({ json: { contract_version: 'investigation-scan/v1', run_handle: opaque(index === 0 ? 'A' : 'B'), scan: responses[index] } });
+      return route.fulfill({ headers: MOCK_SERVER, json: { contract_version: 'investigation-scan/v1', run_handle: opaque(index === 0 ? 'A' : 'B'), scan: responses[index] } });
     }
-    if (path === '/api/v2/investigations') return route.fulfill({ status: 201, json: { contract_version: 'investigation-session/v1', investigation_handle: opaque('S') } });
+    if (path === '/api/v2/investigations') return route.fulfill({ headers: MOCK_SERVER, status: 201, json: { contract_version: 'investigation-session/v1', investigation_handle: opaque('S') } });
     if (path === '/api/v2/investigations/evaluate') {
       await evaluationMayReturn;
-      return route.fulfill({ json: {
+      return route.fulfill({ headers: MOCK_SERVER, json: {
         contract_version: 'finding-disappearance-evaluation/v1', comparability: 'COMPARABLE', overall_assessment: 'EXPLANATION_SUPPORTED',
         findings: [
           { finding_id: itemA.finding_id, category: 'shared', path_observation: 'PATH_REPORTED_SCANNED', skip_hypothesis: 'UNDETERMINED', source_snapshot_hypothesis: 'UNDETERMINED', rule_identity_hypothesis: 'UNDETERMINED' },
@@ -78,9 +81,9 @@ test('a delayed evaluation cannot survive baseline release or overwrite the curr
     }
     if (path === '/api/v2/investigation-release') {
       releases.push(route.request().postDataJSON() as Record<string, unknown>);
-      return route.fulfill({ status: 204, body: '' });
+      return route.fulfill({ headers: MOCK_SERVER, status: 204, body: '' });
     }
-    return route.fulfill({ status: 404, json: { error: 'invalid_request' } });
+    return route.fulfill({ headers: MOCK_SERVER, status: 404, json: { error: 'invalid_request' } });
   });
 
   await page.goto('/');
@@ -112,15 +115,15 @@ test('rule bytes response must finish before the map and cannot revive it after 
   const gate = new Promise<void>((resolve) => { resumeRule = resolve; });
   await page.route('**/api/v2/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
-    if (path === '/api/v2/investigation-scans/rule-bytes') return route.fulfill({ json: { contract_version: 'investigation-scan/v1', run_handle: opaque(scanIndex++ ? 'B' : 'A'), scan: emptyScan } });
-    if (path === '/api/v2/investigations') return route.fulfill({ status: 201, json: { contract_version: 'investigation-session/v1', investigation_handle: opaque('S') } });
-    if (path === '/api/v2/investigations/evaluate') return route.fulfill({ json: { contract_version: 'finding-disappearance-evaluation/v1', comparability: 'COMPARABLE', overall_assessment: 'UNDETERMINED', findings: [], limitation_codes: ['source_snapshot_not_collected'] } });
+    if (path === '/api/v2/investigation-scans/rule-bytes') return route.fulfill({ headers: MOCK_SERVER, json: { contract_version: 'investigation-scan/v1', run_handle: opaque(scanIndex++ ? 'B' : 'A'), scan: emptyScan } });
+    if (path === '/api/v2/investigations') return route.fulfill({ headers: MOCK_SERVER, status: 201, json: { contract_version: 'investigation-session/v1', investigation_handle: opaque('S') } });
+    if (path === '/api/v2/investigations/evaluate') return route.fulfill({ headers: MOCK_SERVER, json: { contract_version: 'finding-disappearance-evaluation/v1', comparability: 'COMPARABLE', overall_assessment: 'UNDETERMINED', findings: [], limitation_codes: ['source_snapshot_not_collected'] } });
     if (path === '/api/v2/investigations/rule-bytes/evaluate') {
       await gate;
-      return route.fulfill({ json: { contract_version: 'rule-bytes-comparison/v1', status: 'SAME_SELECTED_BYTES', limitation_codes: ['selected_rule_bytes_only', 'loaded_rule_identity_unverified'] } });
+      return route.fulfill({ headers: MOCK_SERVER, json: { contract_version: 'rule-bytes-comparison/v1', status: 'SAME_SELECTED_BYTES', limitation_codes: ['selected_rule_bytes_only', 'loaded_rule_identity_unverified'] } });
     }
-    if (path === '/api/v2/investigation-release') return route.fulfill({ status: 204, body: '' });
-    return route.fulfill({ status: 404, json: { error: 'invalid_request' } });
+    if (path === '/api/v2/investigation-release') return route.fulfill({ headers: MOCK_SERVER, status: 204, body: '' });
+    return route.fulfill({ headers: MOCK_SERVER, status: 404, json: { error: 'invalid_request' } });
   });
   await page.goto('/');
   await page.getByLabel('로컬 API 토큰').fill('synthetic-token');
@@ -148,11 +151,11 @@ test('the conservative local display deadline removes the map and requires new s
   let scanIndex = 0;
   await page.route('**/api/v2/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
-    if (path === '/api/v2/investigation-scans') return route.fulfill({ json: { contract_version: 'investigation-scan/v1', run_handle: opaque(scanIndex++ ? 'B' : 'A'), scan: emptyScan } });
-    if (path === '/api/v2/investigations') return route.fulfill({ status: 201, json: { contract_version: 'investigation-session/v1', investigation_handle: opaque('S') } });
-    if (path === '/api/v2/investigations/evaluate') return route.fulfill({ json: { contract_version: 'finding-disappearance-evaluation/v1', comparability: 'COMPARABLE', overall_assessment: 'UNDETERMINED', findings: [], limitation_codes: ['source_snapshot_not_collected'] } });
-    if (path === '/api/v2/investigation-release') return route.fulfill({ status: 204, body: '' });
-    return route.fulfill({ status: 404, json: { error: 'invalid_request' } });
+    if (path === '/api/v2/investigation-scans') return route.fulfill({ headers: MOCK_SERVER, json: { contract_version: 'investigation-scan/v1', run_handle: opaque(scanIndex++ ? 'B' : 'A'), scan: emptyScan } });
+    if (path === '/api/v2/investigations') return route.fulfill({ headers: MOCK_SERVER, status: 201, json: { contract_version: 'investigation-session/v1', investigation_handle: opaque('S') } });
+    if (path === '/api/v2/investigations/evaluate') return route.fulfill({ headers: MOCK_SERVER, json: { contract_version: 'finding-disappearance-evaluation/v1', comparability: 'COMPARABLE', overall_assessment: 'UNDETERMINED', findings: [], limitation_codes: ['source_snapshot_not_collected'] } });
+    if (path === '/api/v2/investigation-release') return route.fulfill({ headers: MOCK_SERVER, status: 204, body: '' });
+    return route.fulfill({ headers: MOCK_SERVER, status: 404, json: { error: 'invalid_request' } });
   });
   await page.goto('/');
   await page.getByLabel('로컬 API 토큰').fill('synthetic-token');

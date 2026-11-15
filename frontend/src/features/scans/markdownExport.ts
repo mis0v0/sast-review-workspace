@@ -9,6 +9,12 @@ export interface ScanContext {
   experimental: boolean;
   scanStatus: ScanResponse['scan_status'];
   receivedAt: string;
+  /**
+   * The server process that produced this result, when the response and the options it was requested
+   * with named the same one. Absent or null means unknown: such a result is never compared with another.
+   * It is not project identity and is not exported.
+   */
+  serverInstanceId?: string | null;
 }
 
 export const MAX_REVIEW_MARKDOWN_BYTES = 512 * 1024;

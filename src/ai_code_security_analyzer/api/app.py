@@ -15,7 +15,12 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from ai_code_security_analyzer.api.routes import AppRateLimiter, investigation_router, router
 from ai_code_security_analyzer.api.schemas import ErrorResponse
-from ai_code_security_analyzer.api.security import ApiBoundaryMiddleware, SecurityHeadersMiddleware
+from ai_code_security_analyzer.api.security import (
+    SERVER_INSTANCE_HEADER,
+    ApiBoundaryMiddleware,
+    SecurityHeadersMiddleware,
+    new_server_instance_id,
+)
 from ai_code_security_analyzer.investigation_evidence_registry import RunEvidenceRegistry
 from ai_code_security_analyzer.services.scan_service import ApiSettings, ProjectTarget, ScanService
 
@@ -43,6 +48,9 @@ def create_app(
         openapi_url=None,
         debug=False,
     )
+    # Identifies this process to its clients; see new_server_instance_id().
+    server_instance_id = new_server_instance_id()
+    app.state.server_instance_id = server_instance_id
     app.state.api_settings = settings
     app.state.scan_service = scan_service or ScanService(settings)
     # One bounded in-memory evidence registry per app instance. The separate
@@ -61,6 +69,8 @@ def create_app(
             allow_origins=list(settings.allowed_origins),
             allow_methods=["GET", "POST"],
             allow_headers=["Content-Type", "X-Local-API-Token"],
+            # A page on an allowed development origin must be able to read it.
+            expose_headers=[SERVER_INSTANCE_HEADER],
             allow_credentials=False,
             max_age=300,
         )
@@ -91,7 +101,7 @@ def create_app(
         app.mount("/", StaticFiles(directory=ui_directory, html=True, check_dir=True), name="dashboard")
     # Wrap outside Starlette's ServerErrorMiddleware so sanitized 500 responses, as
     # well as boundary denials and preflight/static responses, receive the same headers.
-    return SecurityHeadersMiddleware(app)
+    return SecurityHeadersMiddleware(app, server_instance_id=server_instance_id)
 
 
 def create_app_from_env(*, investigation_api_enabled: bool = False) -> SecurityHeadersMiddleware:

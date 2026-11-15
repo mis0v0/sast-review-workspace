@@ -6,6 +6,7 @@ import hmac
 import json
 import math
 import re
+import secrets
 import unicodedata
 from urllib.parse import urlsplit
 
@@ -22,13 +23,35 @@ SECURITY_HEADERS = (
 )
 
 
-class SecurityHeadersMiddleware:
-    """Apply browser security and no-store headers to all HTTP responses."""
+SERVER_INSTANCE_HEADER = "X-Server-Instance"
+_SERVER_INSTANCE_ID = re.compile(r"\A[A-Za-z0-9_-]{16,64}\Z")
 
-    def __init__(self, app: ASGIApp) -> None:
+
+def new_server_instance_id() -> str:
+    """Return a fresh random identifier for one server process.
+
+    It lets a client tell that two responses came from the same running
+    server, and nothing more: it is not a secret, is not derived from any
+    path or filesystem metadata, is never stored, and does not identify a
+    project. A restart always produces a different value.
+    """
+    return secrets.token_urlsafe(16)
+
+
+class SecurityHeadersMiddleware:
+    """Apply browser security, no-store and server-instance headers to all HTTP responses."""
+
+    def __init__(self, app: ASGIApp, *, server_instance_id: str) -> None:
+        if not isinstance(server_instance_id, str) or not _SERVER_INSTANCE_ID.fullmatch(server_instance_id):
+            raise ValueError("server_instance_id_invalid")
         self.app = app
         # Keep the familiar FastAPI state handle available to trusted in-process callers.
         self.state = getattr(app, "state", None)
+        self._response_headers = (
+            *SECURITY_HEADERS,
+            (SERVER_INSTANCE_HEADER.lower().encode("ascii"), server_instance_id.encode("ascii")),
+        )
+        self._response_header_names = frozenset(name for name, _ in self._response_headers)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -37,11 +60,13 @@ class SecurityHeadersMiddleware:
 
         async def send_with_security_headers(message: Message) -> None:
             if message["type"] == "http.response.start":
+                # Anything an inner layer set under these names is replaced, so a
+                # handler can neither drop a policy nor forge the instance value.
                 headers = [
                     (key, value) for key, value in message.get("headers", [])
-                    if key.lower() not in {name for name, _ in SECURITY_HEADERS}
+                    if key.lower() not in self._response_header_names
                 ]
-                headers.extend(SECURITY_HEADERS)
+                headers.extend(self._response_headers)
                 message = {**message, "headers": headers}
             await send(message)
 
@@ -291,4 +316,7 @@ def valid_token(candidate: str | None, expected: str) -> bool:
     return hmac.compare_digest(candidate.encode("utf-8"), expected.encode("utf-8"))
 
 
-__all__ = ["ApiBoundaryMiddleware", "SecurityHeadersMiddleware", "valid_token"]
+__all__ = [
+    "SERVER_INSTANCE_HEADER", "ApiBoundaryMiddleware", "SecurityHeadersMiddleware", "new_server_instance_id",
+    "valid_token",
+]
