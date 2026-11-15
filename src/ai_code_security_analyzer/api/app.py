@@ -25,6 +25,12 @@ from ai_code_security_analyzer.investigation_evidence_registry import RunEvidenc
 from ai_code_security_analyzer.services.scan_service import ApiSettings, ProjectTarget, ScanService
 
 
+_REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
+# The built dashboard served at "/" and the trusted rules used unless configured otherwise.
+DASHBOARD_DIRECTORY = _REPOSITORY_ROOT / "frontend" / "dist"
+DEFAULT_RULES_DIRECTORY = _REPOSITORY_ROOT / "rules"
+
+
 def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
     result: dict[str, object] = {}
     for key, value in pairs:
@@ -96,7 +102,7 @@ def create_app(
 
     app.include_router(router, prefix="/api/v1")
     app.include_router(investigation_router, prefix="/api/v2", include_in_schema=False)
-    ui_directory = static_directory or (Path(__file__).resolve().parents[3] / "frontend" / "dist")
+    ui_directory = static_directory or DASHBOARD_DIRECTORY
     if ui_directory.is_dir():
         app.mount("/", StaticFiles(directory=ui_directory, html=True, check_dir=True), name="dashboard")
     # Wrap outside Starlette's ServerErrorMiddleware so sanitized 500 responses, as
@@ -114,7 +120,7 @@ def create_app_from_env(*, investigation_api_enabled: bool = False) -> SecurityH
         raise RuntimeError("local_api_configuration_required") from None
     if target_present and targets_present:
         raise RuntimeError("local_api_configuration_invalid") from None
-    default_rules = Path(__file__).resolve().parents[3] / "rules"
+    default_rules = DEFAULT_RULES_DIRECTORY
     rules_value = os.environ.get("AI_CODE_SECURITY_RULES_DIR")
     origins = tuple(
         item.strip() for item in os.environ.get("AI_CODE_SECURITY_ALLOWED_ORIGINS", "").split(",") if item.strip()
