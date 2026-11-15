@@ -28,6 +28,7 @@ Language: the pages under "Start here" are in English. Research records and the 
 - Synthetic detection benchmarks: [6A](phase6a-independent-detection-benchmark.md), [6D](phase6d-sast-generalization-evaluation.md), [6E](phase6e-heldout-sast-evaluation.md)
 - [Browser security validation](phase5d-browser-security-validation.md)
 - [Untrusted repository scan hardening (A4)](a4-untrusted-scan-git-hardening.md): a target's Git configuration can no longer run commands during a scan; scan-scope changes
+- [Safe symbolic-link handling (A5)](a5-safe-symlink-handling.md): links inside a target are allowed and never followed; a linked `.semgrepignore` is refused
 - Isolation design, not built: [Phase 7C-1B](phase7c1b-verifiable-worker-design.md)
 
 ## Research results (D1, D2, U1)

@@ -40,6 +40,10 @@ ADAPTER_POLICY_SKIP_REASON = "adapter_policy_exclusion"
 _IGNORE_FILE_SKIP_REASON = "semgrepignore_patterns_match"
 _SEMGREP_CLI_EXCLUDE_REASON = "cli_exclude_flags_match"
 _KNOWN_SKIP_REASONS = frozenset({_IGNORE_FILE_SKIP_REASON, ADAPTER_POLICY_SKIP_REASON})
+# Recorded when the target holds symbolic links outside the adapter's excluded
+# folders. They are never followed, so nothing reachable only through a link
+# was scanned.
+SYMBOLIC_LINKS_NOT_FOLLOWED = "symbolic_links_not_followed"
 
 
 class EvidenceStatus(StrEnum):
@@ -177,7 +181,7 @@ def _invalid_scope(
     )
 
 
-def _safe_relative_path(raw: Any, project_root: Path) -> str | None:
+def _safe_relative_path(raw: Any, project_root: Path, *, excluded_name_may_be_link: bool = False) -> str | None:
     if not isinstance(raw, str) or not raw or len(raw.encode("utf-8", errors="surrogatepass")) > MAX_SCOPE_PATH_BYTES:
         return None
     if "\\" in raw or ":" in raw or any(unicodedata.category(char).startswith("C") for char in raw):
@@ -209,7 +213,8 @@ def _safe_relative_path(raw: Any, project_root: Path) -> str | None:
     # Refuse currently visible symlink components. This is a bounded path
     # validation step, not a race-free proof of what Semgrep opened.
     current = root
-    for part in relative.split("/"):
+    parts = relative.split("/")
+    for index, part in enumerate(parts):
         current = current / part
         try:
             mode = current.lstat().st_mode
@@ -218,6 +223,11 @@ def _safe_relative_path(raw: Any, project_root: Path) -> str | None:
         except OSError:
             return None
         if stat.S_ISLNK(mode):
+            # A skipped entry that is itself named like an adapter exclusion
+            # (for example a linked ``node_modules``) is excluded by name and
+            # never opened, so the link may be recorded. Nothing below a link is.
+            if excluded_name_may_be_link and index == len(parts) - 1 and part in ADAPTER_EXCLUDED_NAMES:
+                continue
             return None
     return relative
 
@@ -306,7 +316,7 @@ def parse_scope_evidence(document: dict[str, Any], project_root: Path) -> ScopeE
                 if not isinstance(item, dict):
                     invalid_reason = "skipped_path_structure_invalid"
                     break
-                path = _safe_relative_path(item.get("path"), project_root)
+                path = _safe_relative_path(item.get("path"), project_root, excluded_name_may_be_link=True)
                 reason = item.get("reason")
                 if path is None:
                     invalid_reason = "skipped_path_invalid"

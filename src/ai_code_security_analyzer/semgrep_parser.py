@@ -2,7 +2,9 @@
 
 import hashlib
 import json
+import os
 import re
+import stat
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -54,17 +56,38 @@ def _nonempty_string(value: Any) -> str | None:
     return value.strip() if isinstance(value, str) and value.strip() else None
 
 
+def link_free_relative_path(raw: str, project_root: Path) -> str | None:
+    """Return ``raw`` relative to the resolved root, or None when it leaves the root
+    or passes through a symbolic link.
+
+    Semgrep is not expected to report a path reached through a link. If it ever
+    does, or a path is replaced by a link after the scan, the path is refused
+    instead of being rewritten to whatever the link points at. This is a check
+    at one moment, not a guarantee against a concurrent change.
+    """
+    try:
+        relative = Path(os.path.normpath(project_root / raw)).relative_to(project_root)
+        if not relative.parts:
+            return None
+        current = project_root
+        for part in relative.parts:
+            current = current / part
+            try:
+                mode = os.lstat(current).st_mode
+            except FileNotFoundError:
+                break
+            if stat.S_ISLNK(mode):
+                return None
+        return relative.as_posix()
+    except (OSError, ValueError, RuntimeError):
+        return None
+
+
 def _relative_path(value: Any, project_root: Path) -> str | None:
     raw = _nonempty_string(value)
     if raw is None:
         return None
-    try:
-        candidate = Path(raw)
-        resolved = (project_root / candidate).resolve()
-        relative = resolved.relative_to(project_root).as_posix()
-        return relative if relative != "." else None
-    except (OSError, ValueError, RuntimeError):
-        return None
+    return link_free_relative_path(raw, project_root)
 
 
 def _cwe(value: Any) -> tuple[str | None, str | None]:

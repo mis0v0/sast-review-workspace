@@ -162,7 +162,9 @@ def _snapshot_firestore_sources(project: Path, project_root: Path) -> dict[str, 
     else:
         entries_seen = 0
         for root, directories, files in os.walk(project, followlinks=False):
-            directories.sort()
+            # Semgrep never scans the adapter's excluded folders, so no finding
+            # can come from them and walking them only spends the budget.
+            directories[:] = sorted(item for item in directories if item not in ADAPTER_EXCLUDED_NAMES)
             files.sort()
             root_path = Path(root)
             entries_seen += len(directories) + len(files)

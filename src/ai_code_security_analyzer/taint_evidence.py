@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from ai_code_security_analyzer.models import Finding
-from ai_code_security_analyzer.semgrep_parser import _finding_id
+from ai_code_security_analyzer.semgrep_parser import _finding_id, link_free_relative_path
 
 
 _MAX_RULE_FILE_BYTES = 256_000
@@ -178,12 +178,7 @@ def _finding_identity_matches(finding: Finding, item: dict[str, Any], path: str 
 def _relative_path(raw: Any, project_root: Path) -> str | None:
     if not isinstance(raw, str) or not raw or len(raw) > 4096:
         return None
-    try:
-        resolved = (project_root / raw).resolve()
-        relative = resolved.relative_to(project_root).as_posix()
-    except (OSError, ValueError, RuntimeError):
-        return None
-    return relative if relative not in {"", "."} else None
+    return link_free_relative_path(raw, project_root)
 
 
 def _trace_status(item: dict[str, Any]) -> TraceStatus:
