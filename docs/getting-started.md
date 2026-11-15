@@ -139,6 +139,7 @@ Exports are built from data already in the page and never re-run Semgrep. Downlo
 | API does not start, or a different instance answers | The launcher always binds `127.0.0.1:8765`. Check for an existing listener with `lsof -nP -iTCP:8765 -sTCP:LISTEN` and stop that instance yourself. |
 | `403 origin_not_allowed` | The page's exact Origin is missing from `AI_CODE_SECURITY_ALLOWED_ORIGINS` (`http://127.0.0.1:8765` for Option A, `http://127.0.0.1:5173` for Option B). |
 | `401 unauthorized` | Missing or wrong token in the dashboard. |
+| "Results come from different server runs" or "the server was restarted" | The API was restarted while the page was open. Results from before the restart are kept on screen but cannot be compared with new ones. Save a new baseline and scan again. |
 | Scan reports `partial` with `no_files_scanned` | The target matched no supported files, or its path falls under Semgrep's default ignore patterns (observed for a target inside `tests/`). Scan a copy in a neutral directory. |
 | `semgrep_not_installed` or `version_check_failed` | Semgrep is not on `PATH` or does not run. Install `semgrep==1.182.1` as shown above. |
 | CLI exit code 2 with `--output` | The output file already exists, or the format is not `json` / `review-md`. |

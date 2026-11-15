@@ -29,6 +29,7 @@ Language: the pages under "Start here" are in English. Research records and the 
 - [Browser security validation](phase5d-browser-security-validation.md)
 - [Untrusted repository scan hardening (A4)](a4-untrusted-scan-git-hardening.md): a target's Git configuration can no longer run commands during a scan; scan-scope changes
 - [Safe symbolic-link handling (A5)](a5-safe-symlink-handling.md): links inside a target are allowed and never followed; a linked `.semgrepignore` is refused
+- [Server instance identity (A6)](a6-server-instance-identity.md): results are compared only within one server run
 - Isolation design, not built: [Phase 7C-1B](phase7c1b-verifiable-worker-design.md)
 
 ## Research results (D1, D2, U1)

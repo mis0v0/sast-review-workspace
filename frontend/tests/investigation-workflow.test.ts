@@ -13,7 +13,7 @@ const emptyScan: ScanResponse = {
 };
 function evidence(scan: ScanResponse = emptyScan, runHandle = 'A'.repeat(43)): EvidenceBackedScan {
   return {
-    snapshot: { scan, context: { targetId: 'project-a', targetLabel: 'Project A', ruleProfileId: 'baseline', ruleProfileLabel: 'Baseline', experimental: false, scanStatus: scan.scan_status, receivedAt: '2026-11-05T00:00:00.000Z' } } as ScanSnapshot,
+    snapshot: { scan, context: { targetId: 'project-a', targetLabel: 'Project A', ruleProfileId: 'baseline', ruleProfileLabel: 'Baseline', experimental: false, scanStatus: scan.scan_status, receivedAt: '2026-11-05T00:00:00.000Z', serverInstanceId: 'test-server-instance-01' } } as ScanSnapshot,
     runHandle,
   };
 }

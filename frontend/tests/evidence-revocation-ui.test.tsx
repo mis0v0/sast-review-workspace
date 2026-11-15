@@ -14,7 +14,7 @@ const response = (partial: boolean) => ({
   severity_counts: { critical: 0, high: 1, medium: 0, low: 0, info: 0 },
   findings: [finding], issues: partial ? ['evidence_unavailable'] : [], limitations: ['scan_result_is_not_safety_proof', ...(partial ? ['scan_partial'] : [])],
 });
-const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status });
+const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'X-Server-Instance': 'test-server-instance-01' } });
 let release: (init: RequestInit) => Promise<Response>;
 let scans = 0;
 function install(partial = true) {

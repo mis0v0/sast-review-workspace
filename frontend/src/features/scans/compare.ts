@@ -1,4 +1,5 @@
 import type { ApiFinding, ScanResponse } from '../../api/types';
+import { isServerInstanceId } from '../../api/serverInstance';
 import type { ScanContext } from './markdownExport';
 
 export interface ScanSnapshot {
@@ -13,6 +14,7 @@ export type ComparisonBlockReason =
   | 'same_scan_snapshot'
   | 'baseline_not_completed' | 'current_not_completed'
   | 'baseline_findings_omitted' | 'current_findings_omitted'
+  | 'server_instance_unavailable' | 'server_instance_mismatch'
   | 'target_mismatch' | 'rule_profile_mismatch'
   | 'semgrep_version_unavailable' | 'semgrep_version_mismatch'
   | 'baseline_context_mismatch' | 'current_context_mismatch'
@@ -66,6 +68,10 @@ export function compareScanSnapshots(baseline: ScanSnapshot | null, current: Sca
 
   if (baseline && current) {
     if (baseline === current || baseline.context === current.context) reasons.push('same_scan_snapshot');
+    // Two results are comparable only when one running server produced both. A target ID is only a
+    // selector inside one server run; after a restart the same ID can name a different folder.
+    if (!isServerInstanceId(baseline.context.serverInstanceId) || !isServerInstanceId(current.context.serverInstanceId)) reasons.push('server_instance_unavailable');
+    else if (baseline.context.serverInstanceId !== current.context.serverInstanceId) reasons.push('server_instance_mismatch');
     if (baseline.context.targetId !== current.context.targetId) reasons.push('target_mismatch');
     if (baseline.context.ruleProfileId !== current.context.ruleProfileId
       || baseline.context.experimental !== current.context.experimental) reasons.push('rule_profile_mismatch');

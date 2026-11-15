@@ -1,3 +1,4 @@
+import { isServerInstanceId } from '../../api/serverInstance';
 import type { InvestigationEvaluation } from '../../api/investigation';
 import type { ScanComparison, ScanSnapshot } from './compare';
 
@@ -30,6 +31,8 @@ export function validateInvestigationRuns(
   const now = current.snapshot;
   if (base.context.targetId !== now.context.targetId || base.context.ruleProfileId !== now.context.ruleProfileId
     || base.context.experimental !== now.context.experimental) return { valid: false, reason: 'context_mismatch' };
+  // Run evidence lives in one server process; handles from another run can never be linked.
+  if (!isServerInstanceId(base.context.serverInstanceId) || base.context.serverInstanceId !== now.context.serverInstanceId) return { valid: false, reason: 'context_mismatch' };
   return { valid: true };
 }
 

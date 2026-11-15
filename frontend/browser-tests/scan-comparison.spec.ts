@@ -3,6 +3,9 @@ import { mkdir } from 'node:fs/promises';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
+// Every mocked API response names one server process, as the real server does.
+const MOCK_SERVER = { 'X-Server-Instance': 'mock-server-instance-01' };
+
 function finding(id: string, line: number) {
   return {
     finding_id: `semgrep:${id.padStart(24, '0').slice(-24)}`,
@@ -34,12 +37,12 @@ test('baseline comparison can be saved, compared, and read without narrow-screen
     scan([finding('aaaaaaaaaaaaaaaaaaaaaaaa', 4), finding('bbbbbbbbbbbbbbbbbbbbbbbb', 7)]),
     scan([finding('aaaaaaaaaaaaaaaaaaaaaaaa', 4), finding('cccccccccccccccccccccccc', 9)]),
   ];
-  await page.route('**/api/v1/health', (route) => route.fulfill({ json: { status: 'ok', service: 'ai-code-security-analyzer' } }));
-  await page.route('**/api/v1/options', (route) => route.fulfill({ json: {
+  await page.route('**/api/v1/health', (route) => route.fulfill({ headers: MOCK_SERVER, json: { status: 'ok', service: 'ai-code-security-analyzer' } }));
+  await page.route('**/api/v1/options', (route) => route.fulfill({ headers: MOCK_SERVER, json: {
     targets: [{ id: 'local-project', label: 'Local Project' }],
     rule_profiles: [{ id: 'baseline', label: 'Baseline Rules', experimental: false }],
   } }));
-  await page.route('**/api/v1/scans', (route) => route.fulfill({ json: responses[scanIndex++] }));
+  await page.route('**/api/v1/scans', (route) => route.fulfill({ headers: MOCK_SERVER, json: responses[scanIndex++] }));
 
   await page.goto('/');
   await page.getByLabel('로컬 API 토큰').fill('synthetic-browser-token');
@@ -110,12 +113,12 @@ test('comparison report download contains every comparison group without another
     scan([finding('aaaaaaaaaaaaaaaaaaaaaaaa', 4), finding('bbbbbbbbbbbbbbbbbbbbbbbb', 7)]),
     scan([finding('aaaaaaaaaaaaaaaaaaaaaaaa', 4), finding('cccccccccccccccccccccccc', 9)]),
   ];
-  await page.route('**/api/v1/health', (route) => route.fulfill({ json: { status: 'ok', service: 'ai-code-security-analyzer' } }));
-  await page.route('**/api/v1/options', (route) => route.fulfill({ json: {
+  await page.route('**/api/v1/health', (route) => route.fulfill({ headers: MOCK_SERVER, json: { status: 'ok', service: 'ai-code-security-analyzer' } }));
+  await page.route('**/api/v1/options', (route) => route.fulfill({ headers: MOCK_SERVER, json: {
     targets: [{ id: 'local-project', label: 'Synthetic Project' }],
     rule_profiles: [{ id: 'baseline', label: 'Baseline Rules', experimental: false }],
   } }));
-  await page.route('**/api/v1/scans', (route) => { scanRequests += 1; return route.fulfill({ json: responses[scanIndex++] }); });
+  await page.route('**/api/v1/scans', (route) => { scanRequests += 1; return route.fulfill({ headers: MOCK_SERVER, json: responses[scanIndex++] }); });
 
   await page.goto('/');
   await page.getByLabel('로컬 API 토큰').fill('synthetic-browser-token');

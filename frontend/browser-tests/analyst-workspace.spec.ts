@@ -3,6 +3,9 @@ import { resolve } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { measureAnalystLayout } from './analyst-layout-measurements';
 
+// Every mocked API response names one server process, as the real server does.
+const MOCK_SERVER = { 'X-Server-Instance': 'mock-server-instance-01' };
+
 const findings = [
   {
     finding_id: 'semgrep:111111111111111111111111', rule_id: 'baseline.synthetic-first', severity: 'high',
@@ -35,14 +38,14 @@ function response(currentFindings = findings) {
 
 async function installApi(page: import('@playwright/test').Page, scanResponse = response()) {
   let scanCount = 0;
-  await page.route('**/api/v1/health', (route) => route.fulfill({ json: { status: 'ok', service: 'ai-code-security-analyzer' } }));
-  await page.route('**/api/v1/options', (route) => route.fulfill({ json: {
+  await page.route('**/api/v1/health', (route) => route.fulfill({ headers: MOCK_SERVER, json: { status: 'ok', service: 'ai-code-security-analyzer' } }));
+  await page.route('**/api/v1/options', (route) => route.fulfill({ headers: MOCK_SERVER, json: {
     targets: [{ id: 'synthetic-workspace', label: '합성 분석 프로젝트' }],
     rule_profiles: [{ id: 'baseline', label: 'Baseline Rules', experimental: false }],
   } }));
   await page.route('**/api/v1/scans', (route) => {
     scanCount += 1;
-    return route.fulfill({ json: scanResponse });
+    return route.fulfill({ headers: MOCK_SERVER, json: scanResponse });
   });
   return () => scanCount;
 }

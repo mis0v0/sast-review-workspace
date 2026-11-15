@@ -4,6 +4,9 @@ import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { readFile } from 'node:fs/promises';
 
+// Every mocked API response names one server process, as the real server does.
+const MOCK_SERVER = { 'X-Server-Instance': 'mock-server-instance-01' };
+
 function finding(id: string) {
   return { finding_id: `semgrep:${id.padStart(24, '0').slice(-24)}`, rule_id: `baseline.rule-${id}`, severity: 'high', verification_status: 'unverified', finding_kind: 'pattern', file_path: `src/${id}.js`, line_number: 4, evidence_validation_status: 'validated', supported_claims: ['match_reported'], restricted_claims: [], validation_error_code: null };
 }
@@ -15,9 +18,9 @@ function scan(findings: ReturnType<typeof finding>[]) {
 
 test('검토 가이드 합성 화면: High validated, High rejected, Medium validated와 모바일 폭', async ({ page }) => {
   let current = { ...finding('aaaaaaaaaaaaaaaaaaaaaaaa'), rule_id: 'baseline.javascript-dynamic-eval' };
-  await page.route('**/api/v1/health', (route) => route.fulfill({ json: { status: 'ok', service: 'ai-code-security-analyzer' } }));
-  await page.route('**/api/v1/options', (route) => route.fulfill({ json: { targets: [{ id: 'project-a', label: 'Synthetic Project' }], rule_profiles: [{ id: 'baseline', label: 'Baseline Rules', experimental: false }] } }));
-  await page.route('**/api/v1/scans', (route) => route.fulfill({ json: scan([current]) }));
+  await page.route('**/api/v1/health', (route) => route.fulfill({ headers: MOCK_SERVER, json: { status: 'ok', service: 'ai-code-security-analyzer' } }));
+  await page.route('**/api/v1/options', (route) => route.fulfill({ headers: MOCK_SERVER, json: { targets: [{ id: 'project-a', label: 'Synthetic Project' }], rule_profiles: [{ id: 'baseline', label: 'Baseline Rules', experimental: false }] } }));
+  await page.route('**/api/v1/scans', (route) => route.fulfill({ headers: MOCK_SERVER, json: scan([current]) }));
   const evidenceDir = resolve(process.cwd(), '../docs/assets/phase8k');
   await mkdir(evidenceDir, { recursive: true });
 
@@ -49,9 +52,9 @@ test('검토 가이드 합성 화면: High validated, High rejected, Medium vali
 
 test('상세 검토 가이드는 심각도와 근거 연결 상태를 구분하고 검토 상태와 독립적으로 동작한다', async ({ page }) => {
   const highRejected = { ...finding('aaaaaaaaaaaaaaaaaaaaaaaa'), rule_id: 'baseline.javascript-dynamic-eval', evidence_validation_status: 'rejected' };
-  await page.route('**/api/v1/health', (route) => route.fulfill({ json: { status: 'ok', service: 'ai-code-security-analyzer' } }));
-  await page.route('**/api/v1/options', (route) => route.fulfill({ json: { targets: [{ id: 'project-a', label: 'Synthetic Project' }], rule_profiles: [{ id: 'baseline', label: 'Baseline Rules', experimental: false }] } }));
-  await page.route('**/api/v1/scans', (route) => route.fulfill({ json: scan([highRejected]) }));
+  await page.route('**/api/v1/health', (route) => route.fulfill({ headers: MOCK_SERVER, json: { status: 'ok', service: 'ai-code-security-analyzer' } }));
+  await page.route('**/api/v1/options', (route) => route.fulfill({ headers: MOCK_SERVER, json: { targets: [{ id: 'project-a', label: 'Synthetic Project' }], rule_profiles: [{ id: 'baseline', label: 'Baseline Rules', experimental: false }] } }));
+  await page.route('**/api/v1/scans', (route) => route.fulfill({ headers: MOCK_SERVER, json: scan([highRejected]) }));
   await page.goto('/');
   await page.getByLabel('로컬 API 토큰').fill('synthetic-review-token');
   await page.getByRole('button', { name: '검사 실행' }).click();
@@ -72,12 +75,12 @@ test('상세 검토 가이드는 심각도와 근거 연결 상태를 구분하�
 test('Finding 검토 상태와 메모는 현재 검사에 격리되고 확인·필터·내보내기·새로고침 동작을 지킨다', async ({ page }) => {
   let scans = 0;
   let scanRequests = 0;
-  await page.route('**/api/v1/health', (route) => route.fulfill({ json: { status: 'ok', service: 'ai-code-security-analyzer' } }));
-  await page.route('**/api/v1/options', (route) => route.fulfill({ json: { targets: [{ id: 'project-a', label: 'Synthetic Project' }], rule_profiles: [{ id: 'baseline', label: 'Baseline Rules', experimental: false }] } }));
+  await page.route('**/api/v1/health', (route) => route.fulfill({ headers: MOCK_SERVER, json: { status: 'ok', service: 'ai-code-security-analyzer' } }));
+  await page.route('**/api/v1/options', (route) => route.fulfill({ headers: MOCK_SERVER, json: { targets: [{ id: 'project-a', label: 'Synthetic Project' }], rule_profiles: [{ id: 'baseline', label: 'Baseline Rules', experimental: false }] } }));
   await page.route('**/api/v1/scans', (route) => {
     scanRequests += 1;
     const response = scans++ === 0 ? scan([finding('aaaaaaaaaaaaaaaaaaaaaaaa'), finding('bbbbbbbbbbbbbbbbbbbbbbbb')]) : scan([finding('aaaaaaaaaaaaaaaaaaaaaaaa'), finding('cccccccccccccccccccccccc')]);
-    return route.fulfill({ json: response });
+    return route.fulfill({ headers: MOCK_SERVER, json: response });
   });
 
   await page.goto('/');
@@ -156,9 +159,9 @@ test('Finding 검토 상태와 메모는 현재 검사에 격리되고 확인·�
 
 test('새 검사 경고를 닫으면 검토 기록을 유지하고 키보드로 기존 JSON 백업에 도달한다', async ({ page }) => {
   let scanRequests = 0;
-  await page.route('**/api/v1/health', (route) => route.fulfill({ json: { status: 'ok', service: 'ai-code-security-analyzer' } }));
-  await page.route('**/api/v1/options', (route) => route.fulfill({ json: { targets: [{ id: 'project-a', label: 'Synthetic Project' }], rule_profiles: [{ id: 'baseline', label: 'Baseline Rules', experimental: false }] } }));
-  await page.route('**/api/v1/scans', (route) => { scanRequests += 1; return route.fulfill({ json: scan([finding('aaaaaaaaaaaaaaaaaaaaaaaa')]) }); });
+  await page.route('**/api/v1/health', (route) => route.fulfill({ headers: MOCK_SERVER, json: { status: 'ok', service: 'ai-code-security-analyzer' } }));
+  await page.route('**/api/v1/options', (route) => route.fulfill({ headers: MOCK_SERVER, json: { targets: [{ id: 'project-a', label: 'Synthetic Project' }], rule_profiles: [{ id: 'baseline', label: 'Baseline Rules', experimental: false }] } }));
+  await page.route('**/api/v1/scans', (route) => { scanRequests += 1; return route.fulfill({ headers: MOCK_SERVER, json: scan([finding('aaaaaaaaaaaaaaaaaaaaaaaa')]) }); });
   await page.goto('/');
   await page.getByLabel('로컬 API 토큰').fill('synthetic-review-token');
   await page.getByRole('button', { name: '검사 실행' }).click();
@@ -189,12 +192,12 @@ test('실패·부분 재검사는 이전 결과와 검토 기록을 유지하고
     scan([finding('aaaaaaaaaaaaaaaaaaaaaaaa')]),
   ];
   let scanRequests = 0;
-  await page.route('**/api/v1/health', (route) => route.fulfill({ json: { status: 'ok', service: 'ai-code-security-analyzer' } }));
-  await page.route('**/api/v1/options', (route) => route.fulfill({ json: { targets: [{ id: 'project-a', label: 'Synthetic Project' }], rule_profiles: [{ id: 'baseline', label: 'Baseline Rules', experimental: false }] } }));
+  await page.route('**/api/v1/health', (route) => route.fulfill({ headers: MOCK_SERVER, json: { status: 'ok', service: 'ai-code-security-analyzer' } }));
+  await page.route('**/api/v1/options', (route) => route.fulfill({ headers: MOCK_SERVER, json: { targets: [{ id: 'project-a', label: 'Synthetic Project' }], rule_profiles: [{ id: 'baseline', label: 'Baseline Rules', experimental: false }] } }));
   await page.route('**/api/v1/scans', (route) => {
     scanRequests += 1;
     const next = replies.shift();
-    return next === 'abort' ? route.abort('connectionrefused') : route.fulfill({ json: next });
+    return next === 'abort' ? route.abort('connectionrefused') : route.fulfill({ headers: MOCK_SERVER, json: next });
   });
   const dialogs: string[] = [];
   page.on('dialog', (dialog) => { dialogs.push(dialog.message()); void dialog.accept(); });

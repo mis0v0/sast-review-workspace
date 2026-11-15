@@ -24,7 +24,7 @@ const scan = (findings: ApiFinding[] = [], overrides: Partial<ScanResponse> = {}
   issues: [], findings, limitations: ['finding_count_not_confirmed_vulnerability_count'], ...overrides,
 });
 
-function json(data: unknown, status = 200) { return new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } }); }
+function json(data: unknown, status = 200) { return new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json', 'X-Server-Instance': 'test-server-instance-01' } }); }
 function installApi(responses: Array<ScanResponse | Response>) {
   vi.mocked(fetch).mockImplementation(async (input) => {
     const url = String(input);

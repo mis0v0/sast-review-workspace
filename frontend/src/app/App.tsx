@@ -55,6 +55,7 @@ const reasonLabels: Record<string,string> = {
   static_evidence_cannot_support_claim:'현재 정적 근거로는 이 주장을 지원할 수 없습니다.', scan_partial:'검사가 일부만 완료됐습니다.',
   scan_not_complete:'전체 검사가 완료되지 않았습니다.', scan_failed:'검사가 실패해 매치를 확인할 수 없습니다.',
 };
+const serverRestartNotice = '검사 서버가 다시 시작된 것을 확인했습니다. 다른 서버 실행의 응답은 적용하지 않으며 검사 대상 목록을 새로 불러왔습니다. 이전 실행의 비교 기준과 조사 증거는 새 검사와 연결되지 않습니다. 다시 검사하세요.';
 const statusLabels: Record<string,string> = { completed:'정상 완료', partial:'부분 검사', execution_failed:'실행 실패', not_installed:'Semgrep 미설치', invalid_json:'결과 형식 오류', timed_out:'시간 초과', output_limit_exceeded:'출력 제한 초과' };
 const analystReviewLabels: Record<AnalystReviewStatus,string> = { pending: '검토 대기', needs_followup: '추가 확인 필요', reviewed: '검토 완료' };
 const restoreReasonLabels: Record<RestoreBlockReason, string> = {
@@ -85,6 +86,9 @@ export function App() {
   const [health, setHealth] = useState<'checking'|'connected'|'offline'>('checking');
   const [connectionAttempt, setConnectionAttempt] = useState(0);
   const [options, setOptions] = useState<Options | null>(null);
+  // The server process that served the loaded options. A scan result is accepted only from that same
+  // process, because the target ID and label it is shown under come from those options.
+  const serverInstanceRef = useRef<string | null>(null);
   const [bootstrapError, setBootstrapError] = useState('');
   const [token, setToken] = useState('');
   const [targetId, setTargetId] = useState('');
@@ -176,10 +180,20 @@ export function App() {
     let active = true;
     setHealth('checking'); setBootstrapError('');
     if (connectionAttempt > 0) { setOptions(null); setTargetId(''); setProfileId(''); }
-    Promise.all([api.health(), api.options()]).then(([_, data]) => {
+    Promise.all([api.health(), api.options()]).then(([_, attested]) => {
       if (!active) return;
+      const data = attested.value;
+      const previousInstance = serverInstanceRef.current;
+      serverInstanceRef.current = attested.serverInstanceId;
       setHealth('connected'); setOptions(data);
       setTargetId(data.targets[0]?.id ?? ''); setProfileId(data.rule_profiles[0]?.id ?? '');
+      if (previousInstance !== null && previousInstance !== attested.serverInstanceId) {
+        // Another server process answered. Evidence handles belong to the previous process and are
+        // dropped here without contacting the new one. The displayed result and review records stay.
+        dropServerEvidenceLocally();
+        setInvestigationMessage('검사 서버가 다시 시작되어 이전 실행의 조사 증거를 사용할 수 없습니다. 조사하려면 두 검사를 새로 실행하세요.');
+        setMessage((current) => current || serverRestartNotice);
+      }
     }).catch(() => { if (active) { setHealth('offline'); setBootstrapError('로컬 API에 연결할 수 없습니다. 검사 서버를 실행하고 브라우저 출처 허용 설정을 확인한 뒤 다시 연결하세요.'); } });
     return () => { active = false; };
   }, [connectionAttempt]);
@@ -226,6 +240,14 @@ export function App() {
     setRuleBytesComparison(null);
     setInvestigationState('idle');
     if (handle && tokenRef.current) await releaseEvidenceHandle(tokenRef.current, 'investigation', handle);
+  }
+
+  /** Forget every handle issued by a server process that is gone. Nothing is sent to the current server. */
+  function dropServerEvidenceLocally() {
+    investigationRequestSequence.current += 1;
+    investigationHandleRef.current = null; currentEvidenceRef.current = null; baselineEvidenceRef.current = null;
+    setInvestigationHandle(null); setInvestigationEvaluation(null); setRuleBytesComparison(null); setInvestigationState('idle');
+    setCurrentEvidence(null); setBaselineEvidence(null);
   }
 
   async function releaseInvestigationEvidence(keepRunHandle?: string): Promise<boolean> {
@@ -307,6 +329,7 @@ export function App() {
     else if (scan !== null) retainedReviewWorkspace.current = null;
     setShowingRetainedResult(false);
     const requestSequence = ++scanRequestSequence.current;
+    const expectedInstance = serverInstanceRef.current;
     const evidenceValidUntilMs = performance.now() + 900_000;
     const evidenceValidUntilWallMs = Date.now() + 900_000;
     investigationRequestSequence.current += 1;
@@ -328,9 +351,26 @@ export function App() {
           ? investigationApi.scanWithRuleBytes(token, targetId, profileId)
           : investigationApi.scan(token, targetId, profileId))
         : null;
-      const result = evidenceResponse?.scan ?? await api.scan(token, targetId, profileId);
+      const plainResponse = evidenceResponse ? null : await api.scan(token, targetId, profileId);
+      const result = evidenceResponse?.scan ?? plainResponse!.value;
+      const responseInstance = evidenceResponse ? evidenceResponse.serverInstanceId : plainResponse!.serverInstanceId;
       if (requestSequence !== scanRequestSequence.current) {
         if (evidenceResponse) await releaseEvidenceHandle(token, 'run', evidenceResponse.run_handle);
+        return;
+      }
+      // The target ID and label of this request came from options served by `expectedInstance`. A response
+      // from any other server process, or one that arrives after the page moved to another process, is not
+      // a result for that request and is never shown, compared or kept as evidence.
+      if ((expectedInstance !== null && responseInstance !== null && responseInstance !== expectedInstance)
+        || serverInstanceRef.current !== expectedInstance) {
+        if (evidenceResponse) await releaseEvidenceHandle(token, 'run', evidenceResponse.run_handle);
+        if (requestSequence !== scanRequestSequence.current) return;
+        const retained = restoreRetainedReviewWorkspace();
+        dropServerEvidenceLocally();
+        setState('failed'); setActiveView(retained ? 'results' : 'start');
+        setMessage(serverRestartNotice + (retained ? ' 이전 검사 결과와 분석가 검토 기록은 그대로 유지했습니다.' : ''));
+        setInvestigationMessage('검사 서버가 다시 시작되어 이전 실행의 조사 증거를 사용할 수 없습니다. 조사하려면 두 검사를 새로 실행하세요.');
+        setConnectionAttempt((value) => value + 1);
         return;
       }
       if (retainedReviewWorkspace.current && !rescanReplacesAnalystReview(result)) {
@@ -342,7 +382,9 @@ export function App() {
         return;
       }
       retainedReviewWorkspace.current = null;
-      const nextContext = { ...requestedContext, scanStatus: result.scan_status, receivedAt: new Date().toISOString() };
+      // Unknown on either side stays unknown; such a result is shown but never compared.
+      const acceptedInstance = expectedInstance !== null && responseInstance === expectedInstance ? responseInstance : null;
+      const nextContext = { ...requestedContext, scanStatus: result.scan_status, receivedAt: new Date().toISOString(), serverInstanceId: acceptedInstance };
       const snapshot: ScanSnapshot = { scan: result, context: nextContext };
       setScan(result); setScanContext(nextContext);
       if (evidenceResponse) setCurrentEvidence({
@@ -361,7 +403,11 @@ export function App() {
       // A failed rescan never becomes a result. If review work was confirmed away, restore the exact prior workspace
       // (same scan, context and records) and say so, instead of presenting the old result as the new one.
       const retained = restoreRetainedReviewWorkspace();
-      const clearedNote = retained ? ' 새 결과는 없으며, 이전 검사 결과와 분석가 검토 기록을 그대로 유지했습니다.' : '';
+      const answeredByAnotherServer = error instanceof ApiError && error.serverInstanceId !== null
+        && expectedInstance !== null && error.serverInstanceId !== expectedInstance;
+      const clearedNote = (retained ? ' 새 결과는 없으며, 이전 검사 결과와 분석가 검토 기록을 그대로 유지했습니다.' : '')
+        + (answeredByAnotherServer ? ' 검사 서버가 다시 시작된 것을 확인해 검사 대상 목록을 새로 불러왔습니다.' : '');
+      if (answeredByAnotherServer) { dropServerEvidenceLocally(); setConnectionAttempt((value) => value + 1); }
       if (runWithEvidence) {
         const apiError = error instanceof ApiError ? error : new ApiError(500, 'invalid_api_response');
         const mapped = investigationErrorMessage(apiError.status, apiError.code);
@@ -596,7 +642,7 @@ export function App() {
       if (currentScanRef.current !== selectedScan || currentScanContextRef.current !== selectedContext) { setBackupMessage('검사 결과가 변경되어 미리보기를 취소했습니다.'); return; }
       const reasons = validateBackupForRestore(parsed, selectedContext, selectedScan);
       setBackupPreview({ backup: parsed, reasons, scan: selectedScan, context: selectedContext, fileName });
-      setBackupMessage(reasons.length ? '백업은 읽었지만 현재 검사에 적용할 수 없습니다.' : '백업을 검증했습니다. 아직 어떤 기록도 적용되지 않았습니다.');
+      setBackupMessage(reasons.length ? '백업은 읽었지만 현재 검사에 적용할 수 없습니다.' : '백업의 형식과 Finding 구성이 현재 검사와 일치합니다. 같은 프로젝트에서 만든 백업인지는 확인하지 않습니다. 아직 어떤 기록도 적용되지 않았습니다.');
     } catch (error) {
       const code = error instanceof Error ? error.message : '';
       const messages: Record<string, string> = {
@@ -771,7 +817,7 @@ export function App() {
             </section></div>
         </details>
         <ScanComparisonPanel baseline={baselineSnapshot} current={currentSnapshot} comparison={comparison} followup={rescanFollowup} onSetBaseline={setCurrentAsBaseline} onClearBaseline={clearBaseline} onExport={exportComparisonReport} onOpenCurrentFinding={openCurrentFindingFromComparison} exportMessage={comparisonExportMessage} exporting={state === 'scanning'} investigation={{ mode: investigationMode, baselineReady: Boolean(baselineEvidence && baselineEvidence.snapshot === baselineSnapshot), currentReady: Boolean(currentEvidence && currentEvidence.snapshot.scan === scan && currentEvidence.snapshot.context === scanContext), evaluationAllowed: Boolean(baselineEvidence && currentEvidence && validateInvestigationRuns(baselineEvidence, currentEvidence).valid && (comparison.comparable || canInvestigateBlockedPartialComparison(baselineEvidence, currentEvidence, comparison))), partialComparisonEligible: canInvestigateBlockedPartialComparison(baselineEvidence, currentEvidence, comparison), status: investigationState, evaluation: investigationEvaluation, ruleBytesComparison, gapMap: evidenceGapMap, message: investigationMessage, onEvaluate: investigateFindingChanges, onRelease: releaseInvestigation }} />
-        <section className="result-export-workspace" aria-label="보고서와 검토 기록 내보내기"><h2>보고서 및 검토 기록</h2><div className="export-note">현재 응답에 포함된 항목만 내보냅니다. 공유 전 파일을 확인하세요.{scan.omitted_finding_count > 0 ? ' 최대 50건까지 포함됩니다.' : ''}{' '}<details className="sarif-export-tool"><summary>SARIF 내보내기</summary><div className="sarif-export-options"><p>현재 검사 응답의 {scan.displayed_finding_count}개 Finding을 SARIF 2.1.0으로 다운로드합니다. 생략된 Finding은 {scan.omitted_finding_count}개입니다. 취약점 확정 결과가 아니며 GitHub 자동 업로드를 수행하지 않습니다.</p><p className="analyst-report-warning">파일 경로와 규칙 ID가 포함됩니다. 외부 공유 전에 내용을 확인하세요.</p>{codeScanningPreflight && <CodeScanningPreflightDetails preflight={codeScanningPreflight}/>}<button type="button" className="button secondary" aria-label="SARIF 다운로드" onClick={exportSarif} disabled={state === 'scanning'}><Icon name="download"/> SARIF 다운로드</button>{sarifExportMessage && <p className="export-feedback" role="status">{sarifExportMessage}</p>}</div></details><details className="analyst-report-export"><summary>분석가 검토 기록 내보내기</summary><div className="analyst-review-export-options"><label><input type="checkbox" aria-label="보고서 메모 포함" checked={includeAnalystNotes} onChange={(event) => { setIncludeAnalystNotes(event.target.checked); setAnalystReviewExportMessage(''); }}/> 메모 포함</label>{includeAnalystNotes && <p className="analyst-report-warning">분석가 메모에는 내부 코드 정보나 민감정보가 포함될 수 있습니다. 다운로드 파일은 디스크에 남으므로 외부 공유 전에 확인하세요.</p>}<button type="button" className="button secondary" aria-label="분석가 검토 기록 내보내기 · Markdown 다운로드" onClick={exportAnalystReviewReport} disabled={state === 'scanning'}><Icon name="download"/> Markdown 다운로드</button>{analystReviewExportMessage && <p className="export-feedback" role="status">{analystReviewExportMessage}</p>}</div></details><details className="analyst-backup-tool"><summary>검토 기록 백업 및 복원</summary><div className="analyst-backup-controls"><p>JSON은 검토 상태를 다시 참고하기 위한 백업입니다. 다운로드 파일은 디스크에 남으며 자동 저장되지 않습니다.</p><label><input type="checkbox" aria-label="JSON 백업에 메모 포함" checked={includeBackupNotes} onChange={(event) => { setIncludeBackupNotes(event.target.checked); setBackupMessage(''); }}/> JSON 백업에 메모 포함</label>{includeBackupNotes && <p className="analyst-report-warning">메모에 내부 코드 정보나 민감정보가 포함될 수 있습니다. 다운로드 파일은 디스크에 남으므로 외부 공유 전에 확인하세요.</p>}<button type="button" className="button secondary" aria-label="검토 기록 백업 JSON 다운로드" onClick={exportAnalystReviewBackup} disabled={state === 'scanning'}><Icon name="download"/> 검토 기록 백업 JSON 다운로드</button><label className="backup-file-label" htmlFor="analyst-review-backup-file">검토 기록 불러오기(JSON)</label><div className="backup-file-picker"><input id="analyst-review-backup-file" className="backup-file-input" type="file" accept=".json,application/json" aria-describedby="backup-file-status backup-file-help" onChange={importAnalystReviewBackup} disabled={state === 'scanning'}/><label htmlFor="analyst-review-backup-file" className="button secondary backup-file-button">JSON 파일 선택</label><span id="backup-file-status" className="backup-file-name" title={backupFileName || undefined}>{backupFileName ? `선택한 파일: ${backupFileName}` : '선택한 파일 없음'}</span></div><small id="backup-file-help">최대 256 KiB. 파일은 브라우저 메모리에서만 읽으며 서버로 전송하지 않습니다.</small>{backupMessage && <p className="export-feedback" role="status">{backupMessage}</p>}{backupPreview && <section className="backup-preview" aria-label="검토 기록 복원 미리보기"><h3>외부 백업 미리보기</h3><p>파일: {backupPreview.fileName}</p><p>{backupPreview.backup.findings.length}개 Finding · 대기 {backupPreview.backup.findings.filter((item) => item.review_status === 'pending').length} · 추가 확인 {backupPreview.backup.findings.filter((item) => item.review_status === 'needs_followup').length} · 검토 완료 {backupPreview.backup.findings.filter((item) => item.review_status === 'reviewed').length}건</p><p>{backupPreview.backup.findings.some((item) => item.note !== undefined) ? '메모 포함' : '메모 제외'}</p><p>적용 가능: {backupPreview.reasons.length ? 0 : backupPreview.backup.findings.length}건 · 현재 기록과 충돌: {scan ? backupPreview.backup.findings.filter((item) => { const existing = getAnalystReviewEntry(analystReviews, scan.findings, item.finding_id); return analystReviews.has(item.finding_id) && (existing.status !== item.review_status || (item.note !== undefined && existing.note !== item.note)); }).length : 0}건</p><p className="analyst-report-warning">문맥이 일치해도 코드 내용이 같다는 뜻은 아닙니다. 가져온 검토 기록은 현재 코드의 보안 판정이나 수정 여부를 증명하지 않습니다.</p>{backupPreview.reasons.length > 0 ? <div role="alert"><strong>복원 차단</strong><ul>{backupPreview.reasons.map((reason) => <li key={reason}>{restoreReasonLabels[reason]}</li>)}</ul></div> : <details className="backup-finding-preview"><summary>Finding별 기록 확인 ({backupPreview.backup.findings.length})</summary><ul>{backupPreview.backup.findings.map((item) => { const currentEntry = scan ? getAnalystReviewEntry(analystReviews, scan.findings, item.finding_id) : { status: 'pending' as const, note: '' }; const applied = backupAppliedIds.has(item.finding_id); const skipped = backupSkippedIds.has(item.finding_id); return <li key={item.finding_id}><strong>{item.rule_id}</strong><span>{item.file_path ?? '위치 확인 불가'}{item.line_number ? `:${item.line_number}` : ''}</span><span>백업: {analystReviewLabels[item.review_status]} · 현재: {analystReviewLabels[currentEntry.status]}</span>{item.note !== undefined && <p>백업 메모 미리보기: {item.note || '(빈 메모)'}</p>}<p>{currentEntry.note ? '현재 메모 있음' : '현재 메모 없음'}</p><button type="button" className="button secondary" onClick={() => applyBackupFinding(item.finding_id)} disabled={state === 'scanning' || applied || skipped}>{applied ? '적용됨' : skipped ? '건너뜀' : '이 기록 적용'}</button><button type="button" className="button tertiary" onClick={() => setBackupSkippedIds((previous) => new Set(previous).add(item.finding_id))} disabled={applied || skipped}>{skipped ? '건너뜀' : '건너뛰기'}</button></li>; })}</ul></details>}</section>}</div></details></div>{exportMessage && <p className="export-feedback" role="status">{exportMessage}</p>}</section>
+        <section className="result-export-workspace" aria-label="보고서와 검토 기록 내보내기"><h2>보고서 및 검토 기록</h2><div className="export-note">현재 응답에 포함된 항목만 내보냅니다. 공유 전 파일을 확인하세요.{scan.omitted_finding_count > 0 ? ' 최대 50건까지 포함됩니다.' : ''}{' '}<details className="sarif-export-tool"><summary>SARIF 내보내기</summary><div className="sarif-export-options"><p>현재 검사 응답의 {scan.displayed_finding_count}개 Finding을 SARIF 2.1.0으로 다운로드합니다. 생략된 Finding은 {scan.omitted_finding_count}개입니다. 취약점 확정 결과가 아니며 GitHub 자동 업로드를 수행하지 않습니다.</p><p className="analyst-report-warning">파일 경로와 규칙 ID가 포함됩니다. 외부 공유 전에 내용을 확인하세요.</p>{codeScanningPreflight && <CodeScanningPreflightDetails preflight={codeScanningPreflight}/>}<button type="button" className="button secondary" aria-label="SARIF 다운로드" onClick={exportSarif} disabled={state === 'scanning'}><Icon name="download"/> SARIF 다운로드</button>{sarifExportMessage && <p className="export-feedback" role="status">{sarifExportMessage}</p>}</div></details><details className="analyst-report-export"><summary>분석가 검토 기록 내보내기</summary><div className="analyst-review-export-options"><label><input type="checkbox" aria-label="보고서 메모 포함" checked={includeAnalystNotes} onChange={(event) => { setIncludeAnalystNotes(event.target.checked); setAnalystReviewExportMessage(''); }}/> 메모 포함</label>{includeAnalystNotes && <p className="analyst-report-warning">분석가 메모에는 내부 코드 정보나 민감정보가 포함될 수 있습니다. 다운로드 파일은 디스크에 남으므로 외부 공유 전에 확인하세요.</p>}<button type="button" className="button secondary" aria-label="분석가 검토 기록 내보내기 · Markdown 다운로드" onClick={exportAnalystReviewReport} disabled={state === 'scanning'}><Icon name="download"/> Markdown 다운로드</button>{analystReviewExportMessage && <p className="export-feedback" role="status">{analystReviewExportMessage}</p>}</div></details><details className="analyst-backup-tool"><summary>검토 기록 백업 및 복원</summary><div className="analyst-backup-controls"><p>JSON은 검토 상태를 다시 참고하기 위한 백업입니다. 다운로드 파일은 디스크에 남으며 자동 저장되지 않습니다.</p><label><input type="checkbox" aria-label="JSON 백업에 메모 포함" checked={includeBackupNotes} onChange={(event) => { setIncludeBackupNotes(event.target.checked); setBackupMessage(''); }}/> JSON 백업에 메모 포함</label>{includeBackupNotes && <p className="analyst-report-warning">메모에 내부 코드 정보나 민감정보가 포함될 수 있습니다. 다운로드 파일은 디스크에 남으므로 외부 공유 전에 확인하세요.</p>}<button type="button" className="button secondary" aria-label="검토 기록 백업 JSON 다운로드" onClick={exportAnalystReviewBackup} disabled={state === 'scanning'}><Icon name="download"/> 검토 기록 백업 JSON 다운로드</button><label className="backup-file-label" htmlFor="analyst-review-backup-file">검토 기록 불러오기(JSON)</label><div className="backup-file-picker"><input id="analyst-review-backup-file" className="backup-file-input" type="file" accept=".json,application/json" aria-describedby="backup-file-status backup-file-help" onChange={importAnalystReviewBackup} disabled={state === 'scanning'}/><label htmlFor="analyst-review-backup-file" className="button secondary backup-file-button">JSON 파일 선택</label><span id="backup-file-status" className="backup-file-name" title={backupFileName || undefined}>{backupFileName ? `선택한 파일: ${backupFileName}` : '선택한 파일 없음'}</span></div><small id="backup-file-help">최대 256 KiB. 파일은 브라우저 메모리에서만 읽으며 서버로 전송하지 않습니다.</small>{backupMessage && <p className="export-feedback" role="status">{backupMessage}</p>}{backupPreview && <section className="backup-preview" aria-label="검토 기록 복원 미리보기"><h3>외부 백업 미리보기</h3><p>파일: {backupPreview.fileName}</p><p className="backup-identity-note" role="note">이 도구는 백업이 현재 프로젝트에서 만들어졌는지 확인하지 않습니다. 검사 대상 ID, 규칙 모음, Semgrep 버전, Finding의 규칙·위치가 같은지만 비교합니다. 다른 프로젝트라도 이 값이 같으면 적용할 수 있으므로 원본을 직접 확인하세요.</p><p>{backupPreview.backup.findings.length}개 Finding · 대기 {backupPreview.backup.findings.filter((item) => item.review_status === 'pending').length} · 추가 확인 {backupPreview.backup.findings.filter((item) => item.review_status === 'needs_followup').length} · 검토 완료 {backupPreview.backup.findings.filter((item) => item.review_status === 'reviewed').length}건</p><p>{backupPreview.backup.findings.some((item) => item.note !== undefined) ? '메모 포함' : '메모 제외'}</p><p>적용 가능: {backupPreview.reasons.length ? 0 : backupPreview.backup.findings.length}건 · 현재 기록과 충돌: {scan ? backupPreview.backup.findings.filter((item) => { const existing = getAnalystReviewEntry(analystReviews, scan.findings, item.finding_id); return analystReviews.has(item.finding_id) && (existing.status !== item.review_status || (item.note !== undefined && existing.note !== item.note)); }).length : 0}건</p><p className="analyst-report-warning">문맥이 일치해도 코드 내용이 같다는 뜻은 아닙니다. 가져온 검토 기록은 현재 코드의 보안 판정이나 수정 여부를 증명하지 않습니다.</p>{backupPreview.reasons.length > 0 ? <div role="alert"><strong>복원 차단</strong><ul>{backupPreview.reasons.map((reason) => <li key={reason}>{restoreReasonLabels[reason]}</li>)}</ul></div> : <details className="backup-finding-preview"><summary>Finding별 기록 확인 ({backupPreview.backup.findings.length})</summary><ul>{backupPreview.backup.findings.map((item) => { const currentEntry = scan ? getAnalystReviewEntry(analystReviews, scan.findings, item.finding_id) : { status: 'pending' as const, note: '' }; const applied = backupAppliedIds.has(item.finding_id); const skipped = backupSkippedIds.has(item.finding_id); return <li key={item.finding_id}><strong>{item.rule_id}</strong><span>{item.file_path ?? '위치 확인 불가'}{item.line_number ? `:${item.line_number}` : ''}</span><span>백업: {analystReviewLabels[item.review_status]} · 현재: {analystReviewLabels[currentEntry.status]}</span>{item.note !== undefined && <p>백업 메모 미리보기: {item.note || '(빈 메모)'}</p>}<p>{currentEntry.note ? '현재 메모 있음' : '현재 메모 없음'}</p><button type="button" className="button secondary" onClick={() => applyBackupFinding(item.finding_id)} disabled={state === 'scanning' || applied || skipped}>{applied ? '적용됨' : skipped ? '건너뜀' : '이 기록 적용'}</button><button type="button" className="button tertiary" onClick={() => setBackupSkippedIds((previous) => new Set(previous).add(item.finding_id))} disabled={applied || skipped}>{skipped ? '건너뜀' : '건너뛰기'}</button></li>; })}</ul></details>}</section>}</div></details></div>{exportMessage && <p className="export-feedback" role="status">{exportMessage}</p>}</section>
       </div>}
       </main>
     </div>
@@ -869,6 +915,8 @@ const comparisonReasonLabels: Record<ComparisonBlockReason, string> = {
   current_not_completed: '부분 검사 또는 실패한 결과는 비교할 수 없습니다.',
   baseline_findings_omitted: '기준 응답에서 Finding이 생략되어 전체 비교를 할 수 없습니다.',
   current_findings_omitted: '현재 응답에서 Finding이 생략되어 전체 비교를 할 수 없습니다.',
+  server_instance_unavailable: '검사 응답에서 서버 실행 식별 정보를 확인할 수 없어 비교하지 않았습니다.',
+  server_instance_mismatch: '비교 기준과 현재 검사가 서로 다른 서버 실행에서 만들어져 비교하지 않았습니다. 서버를 다시 시작하면 이전 기준은 사용할 수 없습니다. 기준을 해제한 뒤 새 기준을 저장하세요.',
   target_mismatch: '검사 대상이 서로 다릅니다.',
   rule_profile_mismatch: '규칙 모음 또는 Experimental 상태가 서로 다릅니다.',
   semgrep_version_unavailable: '두 검사 모두 Semgrep 버전을 확인할 수 있어야 합니다.',

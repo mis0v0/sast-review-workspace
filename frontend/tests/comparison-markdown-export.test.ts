@@ -17,7 +17,7 @@ const scan = (findings: ApiFinding[] = []): ScanResponse => ({
 });
 const snapshot = (findings: ApiFinding[] = [], overrides: Partial<ScanResponse> = {}, contextOverrides: Partial<ScanSnapshot['context']> = {}): ScanSnapshot => ({
   scan: { ...scan(findings), ...overrides },
-  context: { targetId: 'project-a', targetLabel: 'Project A', ruleProfileId: 'baseline', ruleProfileLabel: 'Baseline', experimental: false, scanStatus: 'completed', receivedAt: '2026-11-01T01:00:00.000Z', ...contextOverrides },
+  context: { targetId: 'project-a', targetLabel: 'Project A', ruleProfileId: 'baseline', ruleProfileLabel: 'Baseline', experimental: false, scanStatus: 'completed', receivedAt: '2026-11-01T01:00:00.000Z', serverInstanceId: 'test-server-instance-01', ...contextOverrides },
 });
 
 describe('검사 비교 Markdown 보고서', () => {
