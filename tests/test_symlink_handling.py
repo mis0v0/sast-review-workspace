@@ -160,6 +160,39 @@ def test_ignore_file_inside_a_dependency_folder_must_also_be_regular(
     assert CountingAdapter.calls == 0
 
 
+def _filesystem_ignores_case(directory: Path) -> bool:
+    (directory / "CaseProbe").write_text("x", encoding="utf-8")
+    return (directory / "caseprobe").exists()
+
+
+@pytest.mark.parametrize("folder", ["", "node_modules/pkg", "packages/api"])
+@pytest.mark.parametrize("name", [".SEMGREPIGNORE", ".SemgrepIgnore"])
+@pytest.mark.parametrize("kind", ["link", "fifo"])
+def test_differently_cased_ignore_file_is_judged_by_the_filesystem(
+    counted, tmp_path: Path, folder: str, name: str, kind: str
+) -> None:
+    """Where the filesystem treats the name as ``.semgrepignore``, so does Semgrep, and so must the check."""
+    service, target = counted
+    _write(target / "src" / "real.js")
+    ignore_file = target / folder / name
+    ignore_file.parent.mkdir(parents=True, exist_ok=True)
+    if kind == "link":
+        _write(tmp_path / "outside-rules", "src/\n")
+        _link(ignore_file, tmp_path / "outside-rules")
+    else:
+        os.mkfifo(ignore_file)
+
+    if _filesystem_ignores_case(tmp_path):
+        with pytest.raises(ServiceError) as error:
+            service.scan("local-project", "baseline")
+        assert (error.value.status_code, error.value.code) == (400, "target_not_allowed")
+        assert CountingAdapter.calls == 0
+    else:
+        # A different name on this filesystem: an ordinary entry Semgrep does not open.
+        assert service.scan("local-project", "baseline").scan_status is ScanStatus.COMPLETED
+        assert CountingAdapter.calls == 1
+
+
 def test_regular_ignore_files_and_anything_inside_git_metadata_are_accepted(counted, tmp_path: Path) -> None:
     service, target = counted
     _write(target / "src" / "real.js")
@@ -573,6 +606,26 @@ def test_semgrep_opens_ignore_files_inside_dependency_folders_but_not_git_metada
     else:
         assert output.result.findings == ()
         assert output.scope_evidence.scanned_status is EvidenceStatus.UNAVAILABLE
+
+
+def test_semgrep_treats_a_differently_cased_ignore_file_as_the_filesystem_does(tmp_path: Path) -> None:
+    """Pins why the pre-scan check asks the filesystem for the name rather than comparing spellings."""
+    _require_semgrep()
+    target = tmp_path / "project"
+    _write(target / "src" / "real.js")
+    _write(target / "other" / "kept.js")
+    _write(target / ".SEMGREPIGNORE", "src/\n")
+
+    output = SemgrepAdapter(RULES)._scan_with_evidence(
+        target, RULES / "security-baseline.yml", investigation_verbose=True
+    )
+
+    if _filesystem_ignores_case(tmp_path):
+        assert output.result.status is ScanStatus.PARTIAL
+        assert set(output.scope_evidence.scanned_paths) == {"other/kept.js"}
+    else:
+        assert output.result.status is ScanStatus.COMPLETED
+        assert set(output.scope_evidence.scanned_paths) == {"src/real.js", "other/kept.js"}
 
 
 def test_ignore_rules_nested_in_a_dependency_folder_cannot_hide_other_files(tmp_path: Path) -> None:

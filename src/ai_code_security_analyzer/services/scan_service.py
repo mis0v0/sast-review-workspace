@@ -428,12 +428,18 @@ class ScanService:
                 entries_seen += len(directories) + len(files)
             if entries_seen > _MAX_TARGET_ENTRIES or time.monotonic() > deadline:
                 raise ValueError("target_preflight_limit")
-            for name in (*directories, *files):
-                if name == _IGNORE_FILE_NAME:
-                    if not stat.S_ISREG(os.lstat(os.path.join(root, name)).st_mode):
-                        raise ValueError("target_ignore_file_not_regular")
-                elif scanned_folder and name not in _EXCLUDED_NAME_SET:
-                    if stat.S_ISLNK(os.lstat(os.path.join(root, name)).st_mode):
+            # Ask the filesystem for the name instead of comparing listed names:
+            # on a case-insensitive or normalizing filesystem Semgrep opens
+            # ``.SEMGREPIGNORE`` as its ignore file too.
+            try:
+                ignore_file_mode = os.lstat(os.path.join(root, _IGNORE_FILE_NAME)).st_mode
+            except FileNotFoundError:
+                ignore_file_mode = None
+            if ignore_file_mode is not None and not stat.S_ISREG(ignore_file_mode):
+                raise ValueError("target_ignore_file_not_regular")
+            if scanned_folder:
+                for name in (*directories, *files):
+                    if name not in _EXCLUDED_NAME_SET and stat.S_ISLNK(os.lstat(os.path.join(root, name)).st_mode):
                         links_seen = True
             directories[:] = [item for item in directories if item != _GIT_METADATA_NAME]
         return target, links_seen
