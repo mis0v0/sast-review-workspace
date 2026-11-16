@@ -52,19 +52,20 @@ Verified with Semgrep 1.182.1:
 
 **Not excluded: build outputs.** `dist/`, `build/`, `coverage/` and similar names can hold ordinary source, and an adapter exclusion cannot be undone by the project. They stay under Semgrep's ignore rules: skipped by Semgrep's default list, scanned when the project supplies its own `.semgrepignore` that does not list them.
 
-**How skips are classified.** Semgrep reports skipped paths only in the verbose investigation run. Each one is stored under a closed reason:
+**How skips are classified.** Semgrep reports skipped paths only with `--verbose`. Since [A8-R1](a8-r1-scan-coverage-and-shutdown.md) every scan passes it, not only the investigation run. Each skipped path is stored under a closed reason. The "effect" column applies to the investigation run; a normal scan keeps its status and reports the exclusion as a coverage code instead:
 
 | Reported by Semgrep | Stored as | Effect on the scan |
 | --- | --- | --- |
 | A path named `.git`, `node_modules` or `.venv`, with Semgrep's CLI-exclude or ignore-file reason | `adapter_policy_exclusion` | none; recorded in the scope evidence |
 | Any other path with the ignore-file reason | `semgrepignore_patterns_match` | `partial` |
+| A file above Semgrep's size limit, on a path the adapter does not exclude (A8-R1) | `exceeded_size_limit` | `partial` |
 | The CLI-exclude reason on any other path | not stored; skip list `UNAVAILABLE` (`skipped_reason_unrecognized`) | `partial` |
 | Any other reason, for example a parser failure | not stored; skip list `UNAVAILABLE` | `partial` |
 | Malformed or out-of-root entries | not stored; skip list `UNAVAILABLE` | `partial` |
 
-A scan is `completed` only when every reported skip is a validated adapter exclusion. The stored form is canonical: evidence that pairs an excluded name with another reason, or `adapter_policy_exclusion` with another path, is refused. The public `ScanResponse` and investigation responses are unchanged, and no new public code was added. `adapter_policy_exclusion` exists only in the process-local scope evidence.
+An investigation scan is `completed` only when every reported skip is a validated adapter exclusion. The stored form is canonical: evidence that pairs an excluded name with another reason, or `adapter_policy_exclusion` with another path, is refused. A4-R1 added no public code; A8-R1 later added four coverage codes to `ScanResponse.limitations`. `adapter_policy_exclusion` exists only in the process-local scope evidence.
 
-`completed` still does not mean every file was inspected. Scope completeness stays `UNVERIFIED`, the normal (non-verbose) scan records that skip details were not collected, and every response carries `scan_result_is_not_safety_proof`.
+`completed` still does not mean every file was inspected. Scope completeness stays `UNVERIFIED`, and every response carries `scan_result_is_not_safety_proof`. A normal scan states what it established about excluded paths as a coverage code (A8-R1): excluded by ignore rules, excluded by the size limit, unverified, or not collected.
 
 ## Scan scope changes
 
@@ -104,7 +105,7 @@ The timed-out row fixes a separate defect found in A3: the registry refused to r
 ## Not covered
 
 - Semgrep still has no OS-level isolation. Scan untrusted repositories only inside a separately isolated environment.
-- `.semgrepignore` and inline `nosemgrep` comments are controlled by the target and can reduce coverage. In the normal scan this is not visible; in the investigation run an ignore-file skip makes the scan `partial`.
+- `.semgrepignore` and inline `nosemgrep` comments are controlled by the target and can reduce coverage. A normal scan reports an ignore-file skip as `paths_excluded_by_ignore_rules` and stays `completed`; in the investigation run it makes the scan `partial`. Inline `nosemgrep` comments are not reported by either.
 - A `.semgrepignore` can be a link to a file outside the target or pull one in with `:include`. Semgrep reads that file. It can only add ignore rules, with the same effect as rules written in the target. The API rejects a `.semgrepignore` that is not a regular file (see [A5](a5-safe-symlink-handling.md)); `:include` is not rejected.
 - A `.semgrepignore` in a parent folder above the target is honoured when that parent is a Git repository. A target that itself sits below a parent repository's `node_modules/` is excluded entirely and returns `partial` with no files scanned.
 - Git repositories that have a default-ignored build output on disk (`dist/`, `build/`) and no `.semgrepignore` are `partial` in the investigation run. Before A4, Git hid that folder and the run was `completed`.

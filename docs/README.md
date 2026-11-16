@@ -31,6 +31,7 @@ Language: the pages under "Start here" are in English. Research records and the 
 - [Safe symbolic-link handling (A5)](a5-safe-symlink-handling.md): links inside a target are allowed and never followed; a linked `.semgrepignore` is refused
 - [Server instance identity (A6)](a6-server-instance-identity.md): results are compared only within one server run
 - [Local project onboarding (A7)](a7-local-onboarding.md): start the dashboard for one directory with one command
+- [Scan coverage statements and launcher shutdown (A8-R1)](a8-r1-scan-coverage-and-shutdown.md): a scan says what Semgrep left out; Ctrl+C stops cleanly
 - Isolation design, not built: [Phase 7C-1B](phase7c1b-verifiable-worker-design.md)
 
 ## Research results (D1, D2, U1)

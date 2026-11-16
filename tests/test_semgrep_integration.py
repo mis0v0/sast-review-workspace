@@ -37,7 +37,7 @@ def test_local_rule_scans_synthetic_source(tmp_path: Path) -> None:
 
 
 @pytest.mark.skipif(shutil.which("semgrep") is None, reason="Semgrep CLI is not installed")
-def test_pinned_semgrep_scan_captures_reported_scope_without_verbose(tmp_path: Path) -> None:
+def test_pinned_semgrep_scan_captures_reported_scope_and_skips(tmp_path: Path) -> None:
     """Exercise scope extraction from the same real Semgrep JSON as Findings."""
     import subprocess
 
@@ -63,9 +63,14 @@ def test_pinned_semgrep_scan_captures_reported_scope_without_verbose(tmp_path: P
     assert output.scope_evidence.scanned_status is EvidenceStatus.OBSERVED
     assert "eval.js" in output.scope_evidence.scanned_paths
     assert "ignored.js" not in output.scope_evidence.scanned_paths
-    # Current non-verbose product invocation does not prove why an unreported
-    # path was absent. Never turn this into a claim that nothing was skipped.
-    assert output.scope_evidence.skipped_status is EvidenceStatus.NOT_COLLECTED
+    # The product invocation collects Semgrep's skip list, so the ignored file is
+    # recorded as excluded instead of being silently absent.
+    assert output.scope_evidence.skipped_status is EvidenceStatus.OBSERVED
+    assert [(item.path, item.reason_code) for item in output.scope_evidence.skipped_paths] == [
+        ("ignored.js", "semgrepignore_patterns_match")
+    ]
+    assert output.result.coverage.paths_skipped is True
+    assert output.result.coverage.ignore_rule_exclusions == 1
     assert "scanned_paths_do_not_prove_complete_analysis" in output.scope_evidence.limitations
 
 
@@ -103,7 +108,11 @@ def test_internal_service_manifest_binds_real_semgrep_findings_and_scope(tmp_pat
     assert manifest.execution_evidence.semgrep_version == response.semgrep_version
     assert manifest.scope_evidence.scanned_status is EvidenceStatus.OBSERVED
     assert "eval.js" in manifest.scope_evidence.scanned_paths
-    assert manifest.scope_evidence.skipped_status is EvidenceStatus.NOT_COLLECTED
+    assert manifest.scope_evidence.skipped_status is EvidenceStatus.OBSERVED
+    assert [(item.path, item.reason_code) for item in manifest.scope_evidence.skipped_paths] == [
+        ("ignored.js", "semgrepignore_patterns_match")
+    ]
+    assert "paths_excluded_by_ignore_rules" in [item.value for item in response.limitations]
     assert manifest.scope_evidence.completeness_status is EvidenceStatus.UNVERIFIED
     assert str(tmp_path) not in repr(manifest)
     assert "scan_ref" not in response.model_dump()

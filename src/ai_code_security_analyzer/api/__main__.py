@@ -240,7 +240,22 @@ def _serve_project(project: str, port: int) -> None:
         config = uvicorn.Config(
             app, host=_HOST, port=port, access_log=False, reload=False, workers=1, log_level="warning",
         )
-        uvicorn.Server(config).run(sockets=[listener])
+        server = uvicorn.Server(config)
+        interrupted = False
+        try:
+            server.run(sockets=[listener])
+        except KeyboardInterrupt:
+            # uvicorn handles Ctrl+C itself: it shuts the server down and then
+            # re-raises the signal. Reaching this point is the normal way to stop,
+            # exactly as in uvicorn.run(). Any other exception still propagates.
+            interrupted = True
+        if not server.started and not interrupted:
+            raise LaunchError(
+                "server_start_failed",
+                "The server did not start.",
+                "Read the error printed above, then start again.",
+            )
+        print("Stopped.", flush=True)
     finally:
         listener.close()
 
@@ -264,6 +279,9 @@ def main(argv: list[str] | None = None) -> None:
         except LaunchError as error:
             print(f"error: {error.code}\n  {error.message}\n  fix: {error.fix}", file=sys.stderr)
             raise SystemExit(2) from None
+        except KeyboardInterrupt:
+            # Ctrl+C before the server was running, for example during the Semgrep check.
+            raise SystemExit(130) from None
         return
     try:
         app = create_app_from_env(investigation_api_enabled=True)

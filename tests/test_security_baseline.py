@@ -61,7 +61,7 @@ def test_baseline_positive_and_negative_cli_evaluation(tmp_path: Path) -> None:
     assert positive_run.returncode == negative_run.returncode == 0
     assert positive_run.stderr == negative_run.stderr == ""
     for report in (positive, negative):
-        assert report["schema_version"] == "1.0"
+        assert report["schema_version"] == "1.1"
         assert report["status"] == "completed" and report["completed"] is True
         assert report["issues"] == []
         assert report["rules"]["file_name"] == RULES.name

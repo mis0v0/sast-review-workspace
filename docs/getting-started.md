@@ -42,6 +42,8 @@ uv run --locked python -m ai_code_security_analyzer scan \
 
 Expected: `Status: completed` and `Findings: 7 unverified candidate(s)` (5 high, 2 medium).
 
+`Status` describes execution. A separate `Coverage:` line says what was left out: paths excluded by ignore rules (Semgrep's default list, for example `test/`, `dist/`, `*.min.js`, or the project's `.semgrepignore`), files above Semgrep's 1 MB limit, or that this is not known. In JSON, `coverage.paths_skipped` is `true`, `false`, or `null` when the skip list was not collected or could not be validated. Path names are never printed.
+
 Other formats:
 
 ```sh
@@ -156,12 +158,14 @@ Exports are built from data already in the page and never re-run Semgrep. Downlo
 
 | Symptom | Likely cause and fix |
 | --- | --- |
-| `error: <code>` with a `fix:` line | Printed by the one-project command before the server starts (section 4). Follow the fix. Codes: `project_directory_invalid`, `project_path_has_symlink`, `project_overlaps_rules`, `dashboard_build_missing`, `semgrep_not_installed`, `version_check_failed`, `version_check_timed_out`, `semgrep_unsupported`, `port_in_use`, `port_unavailable`, `token_display_unavailable`, `api_token_invalid`, `allowed_origins_invalid`, `rules_directory_invalid`, `target_configured_twice`. |
+| `error: <code>` with a `fix:` line | Printed by the one-project command before the server starts (section 4). Follow the fix. Codes: `project_directory_invalid`, `project_path_has_symlink`, `project_overlaps_rules`, `dashboard_build_missing`, `semgrep_not_installed`, `version_check_failed`, `version_check_timed_out`, `semgrep_unsupported`, `port_in_use`, `port_unavailable`, `token_display_unavailable`, `api_token_invalid`, `allowed_origins_invalid`, `rules_directory_invalid`, `target_configured_twice`, `server_start_failed`. |
 | API exits with `local_api_configuration_required` | No project directory and no environment configuration. Pass the directory to scan (section 4), or set `AI_CODE_SECURITY_API_TOKEN` and one of `AI_CODE_SECURITY_TARGET` / `AI_CODE_SECURITY_TARGETS`. |
 | API exits with `local_api_configuration_invalid` | Token shorter than 43 characters or containing other characters; both target variables set; or malformed `AI_CODE_SECURITY_TARGETS` JSON (relative paths, extra keys, more than 32 entries). |
 | API does not start, or a different instance answers | The port (default `127.0.0.1:8765`) is taken. Check with `lsof -nP -iTCP:8765 -sTCP:LISTEN` and stop that instance yourself, or pass `--port`. |
 | `403 origin_not_allowed` | The page's exact Origin is missing from `AI_CODE_SECURITY_ALLOWED_ORIGINS` (`http://127.0.0.1:8765` for Option A, `http://127.0.0.1:5173` for Option B). |
 | `401 unauthorized` | Missing or wrong token in the dashboard. |
+| Every scan fails in the dashboard right after updating the repository | The built dashboard is older than the API and rejects a response code it does not know. Rebuild it: `(cd frontend && npm ci && npm run build)`. |
+| A completed scan shows "제외 규칙으로 검사하지 않은 경로가 있습니다" | Paths matched Semgrep's default ignore list (`test/`, `tests/`, `dist/`, `build/`, `vendor/`, `*.min.js` and others) or the project's `.semgrepignore`, and were not scanned. To scan them, give the project its own `.semgrepignore` that lists only what should be left out; it replaces the default list. |
 | "Results come from different server runs" or "the server was restarted" | The API was restarted while the page was open. Results from before the restart are kept on screen but cannot be compared with new ones. Save a new baseline and scan again. |
 | Scan reports `partial` with `no_files_scanned` (API issue `evidence_unavailable`) | The target has no files the rules apply to (only JavaScript/TypeScript and Firestore rules are covered, so a Python-only project lands here), or its path falls under Semgrep's default ignore patterns (observed for a target inside `tests/`). For the latter, scan a copy in a neutral directory. |
 | `semgrep_not_installed` or `version_check_failed` | Semgrep is not on `PATH` or does not run. Install `semgrep==1.182.1` as shown above. |

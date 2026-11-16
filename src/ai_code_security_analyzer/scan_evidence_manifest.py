@@ -38,8 +38,11 @@ _FINDING_ID = re.compile(r"\Asemgrep:[a-f0-9]{24}\Z")
 ADAPTER_EXCLUDED_NAMES = (".git", "node_modules", ".venv")
 ADAPTER_POLICY_SKIP_REASON = "adapter_policy_exclusion"
 _IGNORE_FILE_SKIP_REASON = "semgrepignore_patterns_match"
+# Semgrep does not open files above its size limit (1,000,000 bytes), whatever
+# their type: a lock file or an image is reported the same way as a source file.
+_SIZE_LIMIT_SKIP_REASON = "exceeded_size_limit"
 _SEMGREP_CLI_EXCLUDE_REASON = "cli_exclude_flags_match"
-_KNOWN_SKIP_REASONS = frozenset({_IGNORE_FILE_SKIP_REASON, ADAPTER_POLICY_SKIP_REASON})
+_KNOWN_SKIP_REASONS = frozenset({_IGNORE_FILE_SKIP_REASON, _SIZE_LIMIT_SKIP_REASON, ADAPTER_POLICY_SKIP_REASON})
 # Recorded when the target holds symbolic links outside the adapter's excluded
 # folders. They are never followed, so nothing reachable only through a link
 # was scanned.
@@ -139,6 +142,8 @@ def classify_reported_skip(path: str, semgrep_reason: object) -> str | None:
         return ADAPTER_POLICY_SKIP_REASON if _is_adapter_excluded_path(path) else None
     if semgrep_reason == _IGNORE_FILE_SKIP_REASON:
         return ADAPTER_POLICY_SKIP_REASON if _is_adapter_excluded_path(path) else _IGNORE_FILE_SKIP_REASON
+    if semgrep_reason == _SIZE_LIMIT_SKIP_REASON:
+        return None if _is_adapter_excluded_path(path) else _SIZE_LIMIT_SKIP_REASON
     return None
 
 
@@ -154,6 +159,56 @@ def only_adapter_policy_exclusions(scope: "ScopeEvidence") -> bool:
     return scope.skipped_status is EvidenceStatus.OBSERVED and all(
         item.reason_code == ADAPTER_POLICY_SKIP_REASON and stored_skip_is_valid(item.path, item.reason_code)
         for item in scope.skipped_paths
+    )
+
+
+class SkipEvidenceState(StrEnum):
+    """What one scan established about paths Semgrep left out."""
+
+    OBSERVED = "observed"            # Semgrep's skip list was reported and every entry was validated
+    NOT_COLLECTED = "not_collected"  # no skip list was reported for this scan
+    UNVERIFIED = "unverified"        # a skip list was reported but could not be validated
+
+
+@dataclass(frozen=True, slots=True)
+class ScanCoverage:
+    """Source-free summary of the skip evidence: a state and counts, never paths.
+
+    The default is the only honest value for a result that carries no skip
+    evidence. Counts exist only for ``OBSERVED`` and leave out the adapter's own
+    exclusions, which are part of every scan.
+    """
+
+    skip_evidence: SkipEvidenceState = SkipEvidenceState.NOT_COLLECTED
+    ignore_rule_exclusions: int | None = None
+    size_limit_exclusions: int | None = None
+
+    @property
+    def paths_skipped(self) -> bool | None:
+        """True or False only when the skip list was observed; otherwise unknown."""
+        if self.skip_evidence is not SkipEvidenceState.OBSERVED:
+            return None
+        return bool(self.ignore_rule_exclusions or self.size_limit_exclusions)
+
+
+def summarize_scan_coverage(scope: object) -> ScanCoverage:
+    """Reduce validated scope evidence to the public coverage summary.
+
+    An absent skip list is never reported as "nothing skipped", and a list that
+    failed validation (unrecognized reason, malformed or out-of-bounds entry)
+    yields no counts.
+    """
+    if not isinstance(scope, ScopeEvidence) or scope.skipped_status is EvidenceStatus.NOT_COLLECTED:
+        return ScanCoverage()
+    if scope.skipped_status is not EvidenceStatus.OBSERVED or not all(
+        stored_skip_is_valid(item.path, item.reason_code) for item in scope.skipped_paths
+    ):
+        return ScanCoverage(SkipEvidenceState.UNVERIFIED)
+    reasons = [item.reason_code for item in scope.skipped_paths]
+    return ScanCoverage(
+        SkipEvidenceState.OBSERVED,
+        ignore_rule_exclusions=reasons.count(_IGNORE_FILE_SKIP_REASON),
+        size_limit_exclusions=reasons.count(_SIZE_LIMIT_SKIP_REASON),
     )
 
 

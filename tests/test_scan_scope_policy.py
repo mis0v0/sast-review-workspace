@@ -112,9 +112,11 @@ def test_adapter_exclusions_hold_whatever_the_project_ignore_file_says(ignore_fi
 
     assert plain.result.status is ScanStatus.COMPLETED
     assert _scanned(plain) == set(SOURCES)
-    # The normal invocation does not collect skips and must not claim there were none.
-    assert plain.scope_evidence.skipped_status is EvidenceStatus.NOT_COLLECTED
-    assert "skip_details_not_collected" in plain.scope_evidence.limitations
+    # The normal invocation collects the same skip list and records the same exclusions.
+    assert plain.scope_evidence.skipped_status is EvidenceStatus.OBSERVED
+    assert _skips(plain) == _skips(investigated)
+    assert "skip_details_not_collected" not in plain.scope_evidence.limitations
+    assert plain.result.coverage.paths_skipped is False
 
 
 def test_large_dependency_tree_is_excluded_and_the_control_shows_what_that_prevents(

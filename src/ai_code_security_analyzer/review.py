@@ -23,6 +23,7 @@ from ai_code_security_analyzer.evidence_summary import (
     build_evidence_summary,
 )
 from ai_code_security_analyzer.models import Finding, FindingStatus, Severity
+from ai_code_security_analyzer.scan_evidence_manifest import ScanCoverage, SkipEvidenceState
 from ai_code_security_analyzer.semgrep_adapter import ScanResult, ScanStatus
 from ai_code_security_analyzer.taint_evidence import TaintEvidence
 
@@ -445,6 +446,24 @@ def _render_card(
     return "\n".join(lines), True
 
 
+def coverage_lines(scan: ScanResult) -> list[str]:
+    """Fixed statements about excluded paths: counts only, never path names."""
+    coverage = getattr(scan, "coverage", None)
+    if not isinstance(coverage, ScanCoverage) or coverage.skip_evidence is SkipEvidenceState.NOT_COLLECTED:
+        return ["검사 범위: 제외된 경로 정보를 수집하지 못했습니다. 보고되지 않은 채 제외된 경로가 있을 수 있습니다."]
+    if coverage.skip_evidence is SkipEvidenceState.UNVERIFIED:
+        return ["검사 범위: Semgrep이 보고한 제외 경로를 검증하지 못해 제외된 경로를 알 수 없습니다."]
+    lines = []
+    if coverage.ignore_rule_exclusions:
+        lines.append(
+            "검사 범위: 제외 규칙(Semgrep 기본 목록 또는 프로젝트 .semgrepignore)으로 "
+            f"경로 {coverage.ignore_rule_exclusions}개를 검사하지 않았습니다."
+        )
+    if coverage.size_limit_exclusions:
+        lines.append(f"검사 범위: Semgrep 크기 제한(1MB)을 넘는 파일 {coverage.size_limit_exclusions}개를 검사하지 않았습니다.")
+    return lines or ["검사 범위: .git, node_modules, .venv 외에 Semgrep이 보고한 제외 경로가 없습니다."]
+
+
 def render_review(
     scan: ScanResult,
     evidence_items: tuple[TaintEvidence, ...] = (),
@@ -498,6 +517,7 @@ def render_review(
         lines.append("검사 안내: " + "; ".join(safe_issue_labels[:10]))
         if len(safe_issue_labels) > 10:
             lines.append(f"추가 검사 안내 생략: {len(safe_issue_labels) - 10}건")
+    lines.extend(coverage_lines(scan))
     lines.extend(
         [
             "해석 제한: 각 Finding은 검토 대상이며 취약점 확정이 아닙니다.",

@@ -62,8 +62,10 @@ def test_scan_uses_local_rules_and_sanitized_environment(paths: tuple[SemgrepAda
     assert len(scanned.findings) == 1
     assert scanned.findings[0].status.value == "unverified"
     args, cwd = calls[-1]
-    assert args[1:8] == [
-        "scan", "--json", "--metrics=off", "--disable-version-check", "--oss-only", "--no-autofix", "--no-git-ignore",
+    # Every scan asks Semgrep for its skip list (--verbose), not only the investigation run.
+    assert args[1:9] == [
+        "scan", "--verbose", "--json", "--metrics=off", "--disable-version-check", "--oss-only", "--no-autofix",
+        "--no-git-ignore",
     ]
     assert args[-3:] == [rules.name, "--", str(target)]
     assert cwd == rules.parent

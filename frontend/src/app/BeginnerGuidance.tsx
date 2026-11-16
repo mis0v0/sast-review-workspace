@@ -15,6 +15,10 @@ const statusHelp: Record<string, HelpText> = {
   scan_partial: { title: '검사가 일부만 완료됐습니다.', description: '일부 파일이나 규칙의 결과가 빠졌을 수 있습니다.', nextStep: '화면에 원인이 제공됐다면 확인하세요. 원인을 알 수 없다면 서버 운영자에게 확인하고, 해결한 뒤 다시 검사하세요.' },
   scan_failed: { title: '검사가 완료되지 않았습니다.', description: '이 결과로 프로젝트의 안전성을 판단할 수 없습니다.', nextStep: '화면에 원인이 제공됐다면 확인하세요. 원인을 알 수 없다면 서버 운영자에게 확인하고, 해결한 뒤 다시 검사하세요.' },
   omitted_findings_not_individually_validated: { title: '생략된 후보는 개별 검증되지 않았습니다.', description: '화면에 표시되지 않은 항목의 근거 상태는 확인할 수 없습니다.', nextStep: '생략된 항목이 있다는 사실을 후속 검토자에게 전달하세요.' },
+  paths_excluded_by_ignore_rules: { title: '제외 규칙으로 검사하지 않은 경로가 있습니다.', description: 'Semgrep 기본 제외 목록(예: test/, dist/, build/, vendor/, *.min.js) 또는 프로젝트의 .semgrepignore에 해당하는 경로는 검사하지 않았습니다. 검사는 완료됐지만 해당 경로의 코드는 결과에 포함되지 않습니다.', nextStep: '제외된 경로에 검토할 코드가 있는지 확인하세요. 검사에 포함하려면 제외할 경로만 적은 .semgrepignore를 프로젝트에 두고 다시 검사하세요. 이 파일이 있으면 기본 제외 목록 대신 적용됩니다.' },
+  paths_excluded_by_size_limit: { title: '크기 제한을 넘어 검사하지 않은 파일이 있습니다.', description: 'Semgrep은 1MB를 넘는 파일을 열지 않습니다. 소스 파일이 아닌 잠금 파일이나 이미지도 여기에 포함됩니다.', nextStep: '1MB를 넘는 소스 파일이 있다면 별도로 검토하세요.' },
+  skipped_paths_unverified: { title: '제외된 경로를 확인하지 못했습니다.', description: 'Semgrep이 보고한 제외 경로 목록을 검증할 수 없어, 어떤 경로가 검사에서 빠졌는지 알 수 없습니다.', nextStep: '이 결과를 전체 프로젝트를 검사한 결과로 보지 마세요. 읽을 수 없는 파일이나 권한 문제가 있는지 확인하세요.' },
+  skipped_paths_not_collected: { title: '제외된 경로 정보를 수집하지 못했습니다.', description: '이 검사에서는 Semgrep의 제외 경로 목록을 받지 못했습니다. 보고되지 않은 채 제외된 경로가 있을 수 있습니다.', nextStep: '이 결과를 전체 프로젝트를 검사한 결과로 보지 마세요. 제외 대상 파일이 매우 많은 프로젝트라면 검사 범위를 나눠 다시 검사하세요.' },
 };
 
 export function describeStatusCode(code: string): HelpText {
