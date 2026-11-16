@@ -37,19 +37,14 @@ uv run --locked python -m ai_code_security_analyzer scan \
 
 `Status: completed`와 `Findings: 7 unverified candidate(s)`가 출력됩니다.
 
-대시보드:
+대시보드: 한 번 빌드한 뒤, 검사할 디렉터리(여기서는 샘플)를 지정해 실행합니다.
 
 ```sh
 (cd frontend && npm ci && npm run build)
-TOKEN="$(uv run --locked python -c 'import secrets; print(secrets.token_urlsafe(32))')"
-echo "$TOKEN"
-AI_CODE_SECURITY_TARGET="$SAMPLE" \
-AI_CODE_SECURITY_API_TOKEN="$TOKEN" \
-AI_CODE_SECURITY_ALLOWED_ORIGINS='http://127.0.0.1:8765' \
-uv run --locked python -m ai_code_security_analyzer.api
+uv run --locked python -m ai_code_security_analyzer.api "$SAMPLE"
 ```
 
-`http://127.0.0.1:8765`를 열고 출력된 토큰을 입력합니다.
+명령은 디렉터리, 대시보드 빌드, Semgrep, 포트를 확인하고 문제가 있으면 해결 방법을 출력합니다. 이상이 없으면 대시보드 주소와 이번 실행용 API 토큰을 출력합니다. `http://127.0.0.1:8765`를 열고 토큰을 붙여 넣으세요. 다른 포트는 `--port`로 지정합니다. 규칙은 JavaScript/TypeScript와 Firestore 보안 규칙만 다루며, 다른 언어의 파일은 검사하지 않습니다.
 
 Semgrep은 운영체제 수준에서 격리되지 않으므로, 신뢰할 수 없는 저장소는 별도로 격리된 환경에서만 검사하세요.
 

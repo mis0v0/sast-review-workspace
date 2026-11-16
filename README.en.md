@@ -37,19 +37,14 @@ uv run --locked python -m ai_code_security_analyzer scan \
 
 It prints `Status: completed` and `Findings: 7 unverified candidate(s)`.
 
-Dashboard:
+Dashboard: build it once, then start it with the directory to scan (here, the sample):
 
 ```sh
 (cd frontend && npm ci && npm run build)
-TOKEN="$(uv run --locked python -c 'import secrets; print(secrets.token_urlsafe(32))')"
-echo "$TOKEN"
-AI_CODE_SECURITY_TARGET="$SAMPLE" \
-AI_CODE_SECURITY_API_TOKEN="$TOKEN" \
-AI_CODE_SECURITY_ALLOWED_ORIGINS='http://127.0.0.1:8765' \
-uv run --locked python -m ai_code_security_analyzer.api
+uv run --locked python -m ai_code_security_analyzer.api "$SAMPLE"
 ```
 
-Open `http://127.0.0.1:8765` and enter the printed token.
+The command checks the directory, the dashboard build, Semgrep and the port, and prints a fix if one is wrong. It then prints the dashboard address and an API token created for this run. Open `http://127.0.0.1:8765` and paste the token. Use `--port` for another port. The rules cover JavaScript/TypeScript and Firestore security rules; files in other languages are not scanned.
 
 Semgrep runs without OS-level isolation, so scan untrusted repositories only in a separately isolated environment.
 

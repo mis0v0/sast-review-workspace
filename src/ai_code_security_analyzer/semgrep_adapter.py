@@ -312,6 +312,48 @@ def _git_isolation_environment(private_directory: Path) -> dict[str, str]:
     return {"GIT_DIR": str(private_directory / "git-disabled")}
 
 
+def _semgrep_environment(temporary_home: str) -> dict[str, str]:
+    return {
+        "PATH": os.environ.get("PATH", os.defpath),
+        "HOME": temporary_home,
+        "XDG_CACHE_HOME": temporary_home,
+        "SEMGREP_SEND_METRICS": "off",
+        "SEMGREP_ENABLE_VERSION_CHECK": "0",
+        **_git_isolation_environment(Path(temporary_home)),
+    }
+
+
+def probe_semgrep() -> tuple[str | None, str | None]:
+    """Check, before any scan, that Semgrep runs and supports the options every scan needs.
+
+    Returns ``(issue, version)``; ``issue`` is ``None`` when Semgrep is usable and
+    otherwise one of the issue codes a scan would report.  The probe runs in an
+    empty private directory with the same isolated environment as a scan, never
+    in a target directory.
+    """
+    executable = shutil.which("semgrep")
+    if executable is None:
+        return "semgrep_not_installed", None
+    with tempfile.TemporaryDirectory(prefix="ai-code-semgrep-probe-") as temporary_home:
+        env = _semgrep_environment(temporary_home)
+        private = Path(temporary_home)
+        try:
+            version_result = _run_process([executable, "--version"], private, env, PROBE_TIMEOUT_SECONDS)
+            version_match = _VERSION_PATTERN.search(version_result.stdout.decode("utf-8", errors="replace"))
+            if version_result.exit_code != 0 or version_match is None:
+                return "version_check_failed", None
+            version = version_match.group()
+            help_result = _run_process([executable, "scan", "--help"], private, env, PROBE_TIMEOUT_SECONDS)
+        except _ProcessTimeout:
+            return "version_check_timed_out", None
+        except (_OutputLimitExceeded, OSError):
+            return "version_check_failed", None
+        help_text = help_result.stdout.decode("utf-8", errors="replace")
+        if help_result.exit_code != 0 or any(option not in help_text for option in _REQUIRED_OPTIONS):
+            return "required_option_unsupported", version
+        return None, version
+
+
 class SemgrepAdapter:
     """Run a scan with rules from a separately trusted local directory."""
 
@@ -351,14 +393,7 @@ class SemgrepAdapter:
             return _ScanOutput(ScanResult(ScanStatus.NOT_INSTALLED, issues=("semgrep_not_installed",)))
 
         with tempfile.TemporaryDirectory(prefix="ai-code-semgrep-") as temporary_home:
-            env = {
-                "PATH": os.environ.get("PATH", os.defpath),
-                "HOME": temporary_home,
-                "XDG_CACHE_HOME": temporary_home,
-                "SEMGREP_SEND_METRICS": "off",
-                "SEMGREP_ENABLE_VERSION_CHECK": "0",
-                **_git_isolation_environment(Path(temporary_home)),
-            }
+            env = _semgrep_environment(temporary_home)
             try:
                 version_result = _run_process([executable, "--version"], project_root, env, PROBE_TIMEOUT_SECONDS)
                 version_match = _VERSION_PATTERN.search(version_result.stdout.decode("utf-8", errors="replace"))

@@ -65,9 +65,33 @@ uv run --locked python -m ai_code_security_analyzer scan --path "$SAMPLE" \
 
 `completed=true` means the scan finished. It does **not** mean the code is safe. Every finding is unverified (`"status": "unverified"` in CLI JSON, `verification_status: "unverified"` in API responses). Reports omit source snippets and raw Semgrep JSON and identify the target by a hash, but they can still contain relative file paths and rule IDs. Review them before sharing.
 
-## 4. Configure the local API
+## 4. Start the dashboard for one project
 
-The API scans only directories registered through environment variables at startup. The browser cannot choose arbitrary paths.
+Build the dashboard once, then pass the directory to scan:
+
+```sh
+(cd frontend && npm ci && npm run build)
+uv run --locked python -m ai_code_security_analyzer.api "$SAMPLE"     # or any project directory
+uv run --locked python -m ai_code_security_analyzer.api ~/code/my-app --port 8766
+```
+
+Before the server starts, the command checks the following, and on any problem prints `error: <code>` with a fix and exits with code 2:
+
+- The directory exists, is a real path with no symbolic link (on macOS `/tmp` is one; use `pwd -P`), and does not overlap the rules directory.
+- `frontend/dist` has been built.
+- Semgrep runs and supports the options scans need.
+- The port is free.
+
+It then prints the dashboard address and an API token created for this run. Open the address and paste the token into **로컬 API 토큰**. Stop the server with Ctrl+C.
+
+- The browser cannot change which directory is scanned. Only the dashboard's own origin is allowed, and the dashboard shows the project as `Local Project`, never its path.
+- The generated token is shown only when the output is an interactive terminal; nothing writes it to a file. To use your own token, set `AI_CODE_SECURITY_API_TOKEN`; it is then not printed.
+- `AI_CODE_SECURITY_ALLOWED_ORIGINS` adds origins, for example the Vite dev server below. `AI_CODE_SECURITY_RULES_DIR` still selects the rules.
+- The bundled rules cover JavaScript/TypeScript and Firestore security rules. A project with no such files, such as a Python-only project, scans as `partial` with no findings. That is not a clean result.
+
+## 5. Advanced: configure with environment variables
+
+Without a project directory, the API reads only environment variables. Use this for several targets (`AI_CODE_SECURITY_TARGETS`) or scripted setups. The browser cannot choose arbitrary paths.
 
 | Variable | Required | Meaning |
 | --- | --- | --- |
@@ -84,8 +108,6 @@ uv run --locked python -c 'import secrets; print(secrets.token_urlsafe(32))'
 ```
 
 Use a dedicated value. Do not commit it or paste it into shared logs.
-
-## 5. Start the API and dashboard
 
 **Option A: built dashboard served by the API (single origin).** When `frontend/dist` exists, the API serves it at `/`.
 
@@ -111,7 +133,7 @@ AI_CODE_SECURITY_ALLOWED_ORIGINS='http://127.0.0.1:5173' \
 uv run --locked python -m ai_code_security_analyzer.api
 ```
 
-Open `http://127.0.0.1:5173`.
+Open `http://127.0.0.1:5173`. The one-project command also works here: set `AI_CODE_SECURITY_ALLOWED_ORIGINS='http://127.0.0.1:5173'` and pass the directory.
 
 ## 6. Review findings and export results
 
@@ -134,13 +156,14 @@ Exports are built from data already in the page and never re-run Semgrep. Downlo
 
 | Symptom | Likely cause and fix |
 | --- | --- |
-| API exits with `local_api_configuration_required` | Token or target variable missing. Set `AI_CODE_SECURITY_API_TOKEN` and one of `AI_CODE_SECURITY_TARGET` / `AI_CODE_SECURITY_TARGETS`. |
+| `error: <code>` with a `fix:` line | Printed by the one-project command before the server starts (section 4). Follow the fix. Codes: `project_directory_invalid`, `project_path_has_symlink`, `project_overlaps_rules`, `dashboard_build_missing`, `semgrep_not_installed`, `version_check_failed`, `version_check_timed_out`, `semgrep_unsupported`, `port_in_use`, `port_unavailable`, `token_display_unavailable`, `api_token_invalid`, `allowed_origins_invalid`, `rules_directory_invalid`, `target_configured_twice`. |
+| API exits with `local_api_configuration_required` | No project directory and no environment configuration. Pass the directory to scan (section 4), or set `AI_CODE_SECURITY_API_TOKEN` and one of `AI_CODE_SECURITY_TARGET` / `AI_CODE_SECURITY_TARGETS`. |
 | API exits with `local_api_configuration_invalid` | Token shorter than 43 characters or containing other characters; both target variables set; or malformed `AI_CODE_SECURITY_TARGETS` JSON (relative paths, extra keys, more than 32 entries). |
-| API does not start, or a different instance answers | The launcher always binds `127.0.0.1:8765`. Check for an existing listener with `lsof -nP -iTCP:8765 -sTCP:LISTEN` and stop that instance yourself. |
+| API does not start, or a different instance answers | The port (default `127.0.0.1:8765`) is taken. Check with `lsof -nP -iTCP:8765 -sTCP:LISTEN` and stop that instance yourself, or pass `--port`. |
 | `403 origin_not_allowed` | The page's exact Origin is missing from `AI_CODE_SECURITY_ALLOWED_ORIGINS` (`http://127.0.0.1:8765` for Option A, `http://127.0.0.1:5173` for Option B). |
 | `401 unauthorized` | Missing or wrong token in the dashboard. |
 | "Results come from different server runs" or "the server was restarted" | The API was restarted while the page was open. Results from before the restart are kept on screen but cannot be compared with new ones. Save a new baseline and scan again. |
-| Scan reports `partial` with `no_files_scanned` | The target matched no supported files, or its path falls under Semgrep's default ignore patterns (observed for a target inside `tests/`). Scan a copy in a neutral directory. |
+| Scan reports `partial` with `no_files_scanned` (API issue `evidence_unavailable`) | The target has no files the rules apply to (only JavaScript/TypeScript and Firestore rules are covered, so a Python-only project lands here), or its path falls under Semgrep's default ignore patterns (observed for a target inside `tests/`). For the latter, scan a copy in a neutral directory. |
 | `semgrep_not_installed` or `version_check_failed` | Semgrep is not on `PATH` or does not run. Install `semgrep==1.182.1` as shown above. |
 | CLI exit code 2 with `--output` | The output file already exists, or the format is not `json` / `review-md`. |
 | `npm ci` or `node` fails | Use Node.js 24 (`.nvmrc`: 24.22.2). Other major versions are not tested. |
