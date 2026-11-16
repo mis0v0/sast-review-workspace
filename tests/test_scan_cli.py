@@ -82,8 +82,11 @@ def test_valid_json_report_and_severity_counts(
     captured = capsys.readouterr()
     report = json.loads(captured.out)
     assert captured.err == ""
-    assert report["schema_version"] == "1.0"
+    assert report["schema_version"] == "1.1"
     assert report["status"] == "completed" and report["completed"] is True
+    # A result that carries no skip evidence never reports that nothing was skipped.
+    assert report["coverage"]["paths_skipped"] is None
+    assert report["coverage"]["skipped_paths"]["evidence"] == "not_collected"
     assert report["target"]["kind"] == "directory"
     assert str(target) not in captured.out
     assert report["tool"] == {"name": "semgrep", "version": "1.182.1", "exit_code": None}

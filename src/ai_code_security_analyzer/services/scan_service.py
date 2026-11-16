@@ -34,8 +34,10 @@ from ai_code_security_analyzer.scan_evidence_manifest import (
     INVOCATION_ID,
     RULE_BYTES_INVOCATION_ID,
     SYMBOLIC_LINKS_NOT_FOLLOWED,
+    ScanCoverage,
     ScanEvidenceManifest,
     ScopeEvidence,
+    SkipEvidenceState,
     create_scan_evidence_manifest,
     new_scan_ref,
     unavailable_scope_evidence,
@@ -483,6 +485,8 @@ class ScanService:
             limitations.append(LimitationCode.SCAN_FAILED)
         if omitted:
             limitations.append(LimitationCode.OMITTED_NOT_VALIDATED)
+        if scan_is_usable:
+            limitations.extend(_coverage_limitations(scan_result))
         return ScanResponse(
             scan_status=scan_result.status,
             completed=scan_result.status is ScanStatus.COMPLETED,
@@ -561,6 +565,21 @@ def _unvalidated(finding: Finding, kind: FindingKind, code: str) -> ApiFinding:
         restricted_claims=(),
         validation_error_code=code,
     )
+
+
+def _coverage_limitations(scan_result: object) -> list[LimitationCode]:
+    """State what a usable scan established about excluded paths; never "none" by default."""
+    coverage = getattr(scan_result, "coverage", None)
+    if not isinstance(coverage, ScanCoverage) or coverage.skip_evidence is SkipEvidenceState.NOT_COLLECTED:
+        return [LimitationCode.SKIPPED_PATHS_NOT_COLLECTED]
+    if coverage.skip_evidence is SkipEvidenceState.UNVERIFIED:
+        return [LimitationCode.SKIPPED_PATHS_UNVERIFIED]
+    limitations = []
+    if coverage.ignore_rule_exclusions:
+        limitations.append(LimitationCode.PATHS_EXCLUDED_BY_IGNORE_RULES)
+    if coverage.size_limit_exclusions:
+        limitations.append(LimitationCode.PATHS_EXCLUDED_BY_SIZE_LIMIT)
+    return limitations
 
 
 def _safe_issues(status: ScanStatus, issues: tuple[str, ...]) -> tuple[IssueCode, ...]:

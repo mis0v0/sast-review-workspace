@@ -14,6 +14,7 @@ import pty
 import re
 import select
 import shutil
+import signal
 import socket
 import subprocess
 import sys
@@ -117,25 +118,40 @@ def _request(port: int, path: str, *, method: str = "GET", token: str | None = N
         return error.code, {k.lower(): v for k, v in error.headers.items()}, error.read()
 
 
+def _default_interrupt_handling() -> None:
+    # A job started from a terminal receives Ctrl+C with the default disposition. The test
+    # runner may itself have been started with SIGINT ignored, which a child would inherit.
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
+
+
 class Launch:
     """A launcher subprocess; stopped by the test fixture."""
 
-    def __init__(self, root: Path, project: Path, port: int, env: dict[str, str], *, terminal: bool = False) -> None:
+    def __init__(self, root: Path, project: Path | None, port: int, env: dict[str, str], *, terminal: bool = False) -> None:
         self.port = port
         self.output = b""
         self._master: int | None = None
+        # Without a project the launcher is configured by environment variables only.
+        command = _command(project, port) if project is not None else [
+            sys.executable, "-m", "ai_code_security_analyzer.api", "--port", str(port),
+        ]
         if terminal:
             self._master, slave = pty.openpty()
             self.process = subprocess.Popen(
-                _command(project, port), cwd=root, env=env, stdin=subprocess.DEVNULL, stdout=slave,
-                stderr=subprocess.PIPE, start_new_session=True,
+                command, cwd=root, env=env, stdin=subprocess.DEVNULL, stdout=slave,
+                stderr=subprocess.PIPE, start_new_session=True, preexec_fn=_default_interrupt_handling,
             )
             os.close(slave)
         else:
             self.process = subprocess.Popen(
-                _command(project, port), cwd=root, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE, start_new_session=True,
+                command, cwd=root, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE, start_new_session=True, preexec_fn=_default_interrupt_handling,
             )
+
+    def interrupt(self) -> int:
+        """Deliver what Ctrl+C delivers: SIGINT to the launcher's foreground process group."""
+        os.killpg(self.process.pid, signal.SIGINT)
+        return self.process.wait(timeout=30)
 
     def read_terminal_until(self, marker: bytes, timeout: float = 60) -> str:
         assert self._master is not None
@@ -218,6 +234,18 @@ def _scan(port: int, token: str = TOKEN) -> tuple[int, dict[str, str], dict]:
 # --- server configuration -------------------------------------------------------------------------
 
 
+def _in_process_launch(monkeypatch, dist: Path, run, probe=lambda: (None, "1.182.1")) -> int:
+    """Arrange ``launcher.main`` to run in this process with a stand-in for the server loop."""
+    monkeypatch.setattr(launcher, "DASHBOARD_DIRECTORY", dist)
+    monkeypatch.setattr(launcher, "probe_semgrep", probe)
+    monkeypatch.setattr(launcher.uvicorn.Server, "run", run)
+    monkeypatch.setattr(launcher.sys.stdout, "isatty", lambda: True, raising=False)
+    for name in ("AI_CODE_SECURITY_TARGET", "AI_CODE_SECURITY_TARGETS", "AI_CODE_SECURITY_API_TOKEN",
+                 "AI_CODE_SECURITY_ALLOWED_ORIGINS", "AI_CODE_SECURITY_RULES_DIR"):
+        monkeypatch.delenv(name, raising=False)
+    return _free_port()
+
+
 def test_project_mode_serves_one_loopback_worker_with_only_the_dashboard_origin(monkeypatch, tmp_path) -> None:
     project = _node_project(tmp_path / "project")
     dist = tmp_path / "dist"
@@ -227,15 +255,9 @@ def test_project_mode_serves_one_loopback_worker_with_only_the_dashboard_origin(
 
     def run(server, sockets=None):
         captured.update(config=server.config, sockets=[sock.getsockname() for sock in sockets])
+        server.started = True   # a server that started and was then stopped
 
-    monkeypatch.setattr(launcher, "DASHBOARD_DIRECTORY", dist)
-    monkeypatch.setattr(launcher, "probe_semgrep", lambda: (None, "1.182.1"))
-    monkeypatch.setattr(launcher.uvicorn.Server, "run", run)
-    monkeypatch.setattr(launcher.sys.stdout, "isatty", lambda: True, raising=False)
-    for name in ("AI_CODE_SECURITY_TARGET", "AI_CODE_SECURITY_TARGETS", "AI_CODE_SECURITY_API_TOKEN",
-                 "AI_CODE_SECURITY_ALLOWED_ORIGINS", "AI_CODE_SECURITY_RULES_DIR"):
-        monkeypatch.delenv(name, raising=False)
-    port = _free_port()
+    port = _in_process_launch(monkeypatch, dist, run)
     launcher.main([str(project), "--port", str(port)])
 
     config = captured["config"]
@@ -377,6 +399,145 @@ def test_untested_semgrep_version_starts_with_a_warning(tmp_path, launches) -> N
     stdout, _ = launch.stop()
     assert "Warning: Semgrep 1.150.0 is installed; this tool is tested with 1.182.1." in stdout
     assert "(not shown)" in stdout and TOKEN not in stdout
+
+
+# --- stopping -------------------------------------------------------------------------------------
+
+
+def _port_is_free(port: int) -> bool:
+    with socket.socket() as probe:
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            probe.bind(("127.0.0.1", port))
+        except OSError:
+            return False
+        return True
+
+
+@pytest.mark.parametrize("terminal", [False, True], ids=["token_from_environment", "generated_token_on_a_terminal"])
+def test_ctrl_c_stops_the_launcher_without_a_traceback_and_releases_the_port(terminal: bool, tmp_path, launches) -> None:
+    root = _tree(tmp_path)
+    port = _free_port()
+    env = _env(root, path=str(_fake_semgrep(tmp_path / "bin")), token=None if terminal else TOKEN)
+    launch = Launch(root, _node_project(tmp_path / "project"), port, env, terminal=terminal)
+    launches.append(launch)
+    if terminal:
+        launch.read_terminal_until(b"Press Ctrl+C")
+    launch.wait_ready()
+
+    if terminal:
+        # Read the terminal while the launcher stops: output still buffered in a
+        # pseudo-terminal can be discarded once its last writer has exited.
+        os.killpg(launch.process.pid, signal.SIGINT)
+        launch.read_terminal_until(b"Stopped.", timeout=20)
+        exit_code = launch.process.wait(timeout=30)
+    else:
+        exit_code = launch.interrupt()
+    stdout, stderr = launch.stop()
+
+    assert exit_code == 0
+    assert stderr == ""
+    assert "Traceback" not in stdout and "KeyboardInterrupt" not in stdout
+    assert stdout.rstrip().endswith("Stopped.")
+    assert _port_is_free(port)
+
+
+def test_ctrl_c_during_the_semgrep_check_exits_without_a_traceback_and_leaves_no_process(tmp_path, launches) -> None:
+    root = _tree(tmp_path)
+    port = _free_port()
+    started = tmp_path / "semgrep-started"
+    bin_directory = tmp_path / "bin"
+    bin_directory.mkdir()
+    # A Semgrep that never answers: records its process ID, then waits.
+    (bin_directory / "semgrep").write_text(f'#!/bin/sh\necho $$ > "{started}"\nexec sleep 60\n', encoding="utf-8")
+    (bin_directory / "semgrep").chmod(0o755)
+    launch = Launch(root, _node_project(tmp_path / "project"), port, _env(root, path=f"{bin_directory}:/bin:/usr/bin"))
+    launches.append(launch)
+    deadline = time.monotonic() + 30
+    while not (started.is_file() and started.read_text().strip()):
+        assert time.monotonic() < deadline and launch.process.poll() is None
+        time.sleep(0.1)
+
+    exit_code = launch.interrupt()
+    stdout, stderr = launch.stop()
+
+    assert exit_code == 130
+    assert stdout == ""
+    assert "Traceback" not in stderr and "KeyboardInterrupt" not in stderr
+    assert _port_is_free(port)
+    with pytest.raises(ProcessLookupError):
+        for _ in range(50):   # the waiting Semgrep process is stopped with the launcher
+            os.kill(int(started.read_text()), 0)
+            time.sleep(0.1)
+
+
+def test_environment_variable_startup_still_serves_and_stops_cleanly(tmp_path, launches) -> None:
+    root = _tree(tmp_path)
+    project = _node_project(tmp_path / "project")
+    port = _free_port()
+    env = _env(
+        root, path=str(_fake_semgrep(tmp_path / "bin")), AI_CODE_SECURITY_TARGET=str(project),
+        AI_CODE_SECURITY_ALLOWED_ORIGINS=f"http://127.0.0.1:{port}",
+    )
+    launch = Launch(root, None, port, env)
+    launches.append(launch)
+    launch.wait_ready()
+
+    status, _, body = _request(port, "/api/v1/options")
+    assert status == 200 and json.loads(body)["targets"] == [{"id": "local-project", "label": "Local Project"}]
+    assert _request(port, "/api/v1/scans", method="POST", body={"target_id": "x", "rule_profile_id": "baseline"})[0] == 401
+
+    exit_code = launch.interrupt()
+    stdout, stderr = launch.stop()
+
+    assert exit_code == 0
+    assert "Traceback" not in stdout + stderr and "KeyboardInterrupt" not in stdout + stderr
+    assert _port_is_free(port)
+
+
+def test_only_ctrl_c_counts_as_a_normal_stop(monkeypatch, tmp_path, capsys) -> None:
+    project = _node_project(tmp_path / "project")
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_text("<!doctype html>")
+
+    def interrupted(server, sockets=None):
+        server.started = True
+        raise KeyboardInterrupt
+
+    port = _in_process_launch(monkeypatch, dist, interrupted)
+    launcher.main([str(project), "--port", str(port)])
+    assert capsys.readouterr().out.rstrip().endswith("Stopped.")
+    assert _port_is_free(port)
+
+    # Any other failure of the running server is raised, not reported as a stop.
+    def crashed(server, sockets=None):
+        server.started = True
+        raise RuntimeError("synthetic server failure")
+
+    port = _in_process_launch(monkeypatch, dist, crashed)
+    with pytest.raises(RuntimeError, match="synthetic server failure"):
+        launcher.main([str(project), "--port", str(port)])
+    assert "Stopped." not in capsys.readouterr().out
+    assert _port_is_free(port)
+
+    # A server that returns without ever starting is an error with its own exit code.
+    port = _in_process_launch(monkeypatch, dist, lambda server, sockets=None: None)
+    with pytest.raises(SystemExit) as refused:
+        launcher.main([str(project), "--port", str(port)])
+    captured = capsys.readouterr()
+    assert refused.value.code == 2
+    assert "error: server_start_failed" in captured.err and "Stopped." not in captured.out
+
+    # Ctrl+C before the server runs (during the Semgrep check) ends quietly as an interrupt.
+    def interrupted_check():
+        raise KeyboardInterrupt
+
+    port = _in_process_launch(monkeypatch, dist, crashed, probe=interrupted_check)
+    with pytest.raises(SystemExit) as stopped:
+        launcher.main([str(project), "--port", str(port)])
+    assert stopped.value.code == 130
+    assert capsys.readouterr().out == ""
 
 
 def test_boundaries_hold_for_a_launched_project(tmp_path, launches) -> None:

@@ -53,6 +53,10 @@ const limitationLabels: Record<string, string> = {
   scan_result_is_not_safety_proof: '검사 결과는 코드 안전성의 증명이 아닙니다.',
   scan_partial: '검사가 일부 범위에서만 완료됐습니다.', scan_failed: '검사가 실패했거나 완료되지 않았습니다.',
   omitted_findings_not_individually_validated: '생략된 Finding의 개별 근거는 검증되지 않았습니다.',
+  paths_excluded_by_ignore_rules: '제외 규칙(Semgrep 기본 목록 또는 프로젝트 .semgrepignore)에 해당하는 경로는 검사하지 않았습니다.',
+  paths_excluded_by_size_limit: 'Semgrep 크기 제한(1MB)을 넘는 파일은 검사하지 않았습니다.',
+  skipped_paths_unverified: '제외된 경로 목록을 검증하지 못해 검사에서 빠진 경로를 알 수 없습니다.',
+  skipped_paths_not_collected: '제외된 경로 정보를 수집하지 못했습니다. 보고되지 않은 채 제외된 경로가 있을 수 있습니다.',
 };
 
 const taintFlowClaims = new Set<ClaimType>([

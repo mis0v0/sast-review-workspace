@@ -6,6 +6,7 @@ const documentedCodes = [
   'semgrep_failed', 'findings_omitted', 'evidence_unavailable',
   'finding_count_not_confirmed_vulnerability_count', 'scan_result_is_not_safety_proof',
   'scan_partial', 'scan_failed', 'omitted_findings_not_individually_validated',
+  'paths_excluded_by_ignore_rules', 'paths_excluded_by_size_limit', 'skipped_paths_unverified', 'skipped_paths_not_collected',
 ];
 
 describe('beginner scan status explanations', () => {

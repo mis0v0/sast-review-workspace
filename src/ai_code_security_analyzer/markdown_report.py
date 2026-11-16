@@ -75,6 +75,7 @@ def _scan_overview(scan: ScanResult) -> list[str]:
         lines.extend(["", "검사 안내: " + "; ".join(safe_issues[:10])])
         if len(safe_issues) > 10:
             lines.append(f"추가 검사 안내 생략: {len(safe_issues) - 10}건")
+    lines.extend(["", *(f"- {line}" for line in review.coverage_lines(scan))])
     lines.extend(
         [
             "",

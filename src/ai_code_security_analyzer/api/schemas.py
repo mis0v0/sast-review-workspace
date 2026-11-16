@@ -182,6 +182,12 @@ class LimitationCode(StrEnum):
     SCAN_PARTIAL = "scan_partial"
     SCAN_FAILED = "scan_failed"
     OMITTED_NOT_VALIDATED = "omitted_findings_not_individually_validated"
+    # Coverage: what the scan established about paths Semgrep left out. These
+    # never name a path and do not change ``scan_status``.
+    PATHS_EXCLUDED_BY_IGNORE_RULES = "paths_excluded_by_ignore_rules"
+    PATHS_EXCLUDED_BY_SIZE_LIMIT = "paths_excluded_by_size_limit"
+    SKIPPED_PATHS_UNVERIFIED = "skipped_paths_unverified"
+    SKIPPED_PATHS_NOT_COLLECTED = "skipped_paths_not_collected"
 
 
 class ScanResponse(ClosedModel):

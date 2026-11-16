@@ -107,6 +107,7 @@ jobs:
           tests/test_scan_scope_policy.py
           tests/test_symlink_handling.py
           tests/test_local_launcher.py
+          tests/test_scan_coverage_integrity.py
       - name: Render Phase 6J trace-free analyst review material
         env:
           SEMGREP_SEND_METRICS: 'off'

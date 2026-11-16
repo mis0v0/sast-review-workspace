@@ -22,8 +22,10 @@ from ai_code_security_analyzer.firestore_context import (
 from ai_code_security_analyzer.models import Finding
 from ai_code_security_analyzer.scan_evidence_manifest import (
     ADAPTER_EXCLUDED_NAMES,
+    ScanCoverage,
     ScopeEvidence,
     not_collected_scope_evidence,
+    summarize_scan_coverage,
     unavailable_scope_evidence,
 )
 from ai_code_security_analyzer.semgrep_parser import InvalidSemgrepJson, _parse_semgrep_json_internal
@@ -63,6 +65,9 @@ class ScanResult:
     issues: tuple[str, ...] = ()
     exit_code: int | None = None
     semgrep_version: str | None = None
+    # What the scan established about paths Semgrep left out. ``status`` describes
+    # execution; a completed scan may still have excluded paths, or no skip evidence.
+    coverage: ScanCoverage = ScanCoverage()
 
 
 @dataclass(frozen=True)
@@ -404,24 +409,44 @@ class SemgrepAdapter:
                 help_text = help_result.stdout.decode("utf-8", errors="replace")
                 if help_result.exit_code != 0 or any(option not in help_text for option in _REQUIRED_OPTIONS):
                     return _ScanOutput(ScanResult(ScanStatus.EXECUTION_FAILED, issues=("required_option_unsupported",), semgrep_version=version))
-                if investigation_verbose and "--verbose" not in help_text:
+                # Semgrep reports the paths it left out only with ``--verbose``. Every
+                # scan asks for that list, so that a result never implies "nothing was
+                # skipped" without having looked. The investigation run requires it.
+                collects_skip_list = "--verbose" in help_text
+                if investigation_verbose and not collects_skip_list:
                     return _ScanOutput(ScanResult(ScanStatus.EXECUTION_FAILED, issues=("verbose_option_unsupported",), semgrep_version=version))
-                args = [
-                    executable, "scan", "--json", "--metrics=off", "--disable-version-check",
-                    "--oss-only", "--no-autofix", "--no-git-ignore",
-                    *(f"--exclude={name}" for name in ADAPTER_EXCLUDED_NAMES),
-                    "--config", rules.name, "--", str(project),
-                ]
-                if investigation_verbose:
-                    args.insert(2, "--verbose")
+
+                def scan_arguments(with_skip_list: bool) -> list[str]:
+                    return [
+                        executable, "scan", *(("--verbose",) if with_skip_list else ()),
+                        "--json", "--metrics=off", "--disable-version-check",
+                        "--oss-only", "--no-autofix", "--no-git-ignore",
+                        *(f"--exclude={name}" for name in ADAPTER_EXCLUDED_NAMES),
+                        "--config", rules.name, "--", str(project),
+                    ]
+
                 firestore_snapshot = (
                     _snapshot_firestore_sources(project, project_root)
                     if _rules_include_firestore_rule(rules)
                     else {}
                 )
+                deadline = time.monotonic() + timeout
                 # A relative config name prevents Semgrep from embedding the local
                 # rules directory in check_id values exposed by public reports.
-                completed = _run_process(args, rules.parent, env, timeout)
+                try:
+                    completed = _run_process(scan_arguments(collects_skip_list), rules.parent, env, timeout)
+                except _OutputLimitExceeded:
+                    # The skip list has one entry per excluded file, so a project with
+                    # thousands of them can exceed the output bound through that list
+                    # alone. A normal scan then runs once more without the list, inside
+                    # the same time limit, and reports its skip evidence as not
+                    # collected. The investigation run depends on the list and fails.
+                    if investigation_verbose or not collects_skip_list:
+                        raise
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise _ProcessTimeout from None
+                    completed = _run_process(scan_arguments(False), rules.parent, env, remaining)
             except _ProcessTimeout:
                 return _ScanOutput(
                     ScanResult(ScanStatus.TIMED_OUT, issues=("semgrep_timeout",)),
@@ -448,6 +473,14 @@ class SemgrepAdapter:
                 scope_evidence=unavailable_scope_evidence("invalid_json"),
             )
         parsed = semgrep_document.parsed
+        coverage = summarize_scan_coverage(semgrep_document.scope_evidence)
+        issues = parsed.issues
+        if not investigation_verbose:
+            # A normal scan reports what Semgrep left out as ``coverage`` and keeps
+            # ``status`` for execution problems; its status never depended on the skip
+            # list before either. The investigation run backs comparison claims, so
+            # there any exclusion beyond the adapter's own still makes it partial.
+            issues = tuple(item for item in issues if item != "semgrep_skipped_paths")
         taint_evidence = build_taint_evidence(
             semgrep_document.document,
             semgrep_document.result_findings,
@@ -458,13 +491,13 @@ class SemgrepAdapter:
         findings = _filter_firestore_comment_matches(semgrep_document, project_root, firestore_snapshot)
         if completed.exit_code != 0:
             return _ScanOutput(
-                ScanResult(ScanStatus.EXECUTION_FAILED, findings, parsed.issues + ("nonzero_exit",), completed.exit_code, version),
+                ScanResult(ScanStatus.EXECUTION_FAILED, findings, issues + ("nonzero_exit",), completed.exit_code, version, coverage),
                 taint_evidence,
                 semgrep_document.scope_evidence,
             )
-        status = ScanStatus.PARTIAL if parsed.issues else ScanStatus.COMPLETED
+        status = ScanStatus.PARTIAL if issues else ScanStatus.COMPLETED
         return _ScanOutput(
-            ScanResult(status, findings, parsed.issues, completed.exit_code, version),
+            ScanResult(status, findings, issues, completed.exit_code, version, coverage),
             taint_evidence,
             semgrep_document.scope_evidence,
         )

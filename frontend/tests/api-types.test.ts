@@ -17,5 +17,12 @@ describe('closed Phase 5A API response contract',()=>{
     ['extra Finding field with a synthetic canary',{...valid,findings:[{...valid.findings[0],message:'SYNTHETIC-CANARY-DO-NOT-EXPOSE raw code'}]}],
     ['duplicate finding id',{...valid,findings:[valid.findings[0],valid.findings[0]],finding_count:2,displayed_finding_count:2,severity_counts:{critical:0,high:2,medium:0,low:0,info:0}}],
     ['contradictory claim',{...valid,findings:[{...valid.findings[0],supported_claims:['flow_trace_available']}]}],
+    ['unknown limitation',{...valid,limitations:['paths_excluded_by_something_else']}],
   ] as const)('rejects %s',(_label,payload)=>{ expect(()=>parseScan(payload)).toThrow('invalid_api_response'); });
+  // A completed scan can state that paths were excluded, or that it does not know.
+  it.each(['paths_excluded_by_ignore_rules','paths_excluded_by_size_limit','skipped_paths_unverified','skipped_paths_not_collected'])('accepts the coverage limitation %s on a completed scan',(code)=>{
+    const scan=parseScan({...valid,limitations:[...valid.limitations,code]});
+    expect(scan.completed).toBe(true);
+    expect(scan.limitations).toContain(code);
+  });
 });

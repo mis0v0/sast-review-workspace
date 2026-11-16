@@ -8,10 +8,13 @@ from pathlib import Path
 from typing import Any
 
 from ai_code_security_analyzer.models import Severity
+from ai_code_security_analyzer.scan_evidence_manifest import ScanCoverage, SkipEvidenceState
 from ai_code_security_analyzer.semgrep_adapter import ScanResult, ScanStatus
 
 
-SCHEMA_VERSION = "1.0"
+# 1.1: ``coverage.paths_skipped`` may be null (skip evidence not established) and may be
+# true for a completed scan; ``coverage.skipped_paths`` carries the evidence state and counts.
+SCHEMA_VERSION = "1.1"
 _FIXED_ISSUES = {
     "semgrep_reported_errors", "semgrep_skipped_rules", "semgrep_skipped_paths",
     "no_files_scanned", "semgrep_not_installed", "version_check_failed",
@@ -46,6 +49,48 @@ def _text_value(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)[1:-1]
 
 
+def scan_coverage(scan: ScanResult) -> ScanCoverage:
+    """The scan's coverage summary; a result without one has no skip evidence."""
+    coverage = getattr(scan, "coverage", None)
+    return coverage if isinstance(coverage, ScanCoverage) else ScanCoverage()
+
+
+def _coverage_report(scan: ScanResult) -> dict[str, Any]:
+    coverage = scan_coverage(scan)
+    return {
+        # True/False only when Semgrep's skip list was observed and validated;
+        # null when it was not, so "no paths skipped" is never implied.
+        "paths_skipped": True if "semgrep_skipped_paths" in scan.issues else coverage.paths_skipped,
+        "skipped_paths": {
+            "evidence": coverage.skip_evidence.value,
+            "excluded_by_ignore_rules": coverage.ignore_rule_exclusions,
+            "excluded_by_size_limit": coverage.size_limit_exclusions,
+        },
+        "rules_skipped": "semgrep_skipped_rules" in scan.issues,
+        "no_files_scanned": "no_files_scanned" in scan.issues,
+    }
+
+
+def coverage_statements(scan: ScanResult) -> list[str]:
+    """Plain statements about excluded paths. Counts only; path details are withheld."""
+    coverage = scan_coverage(scan)
+    if coverage.skip_evidence is SkipEvidenceState.NOT_COLLECTED:
+        return ["skipped-path details were not collected; paths may have been excluded without being reported."]
+    if coverage.skip_evidence is SkipEvidenceState.UNVERIFIED:
+        return ["Semgrep reported skipped paths that could not be validated; the excluded paths are not known."]
+    statements = []
+    if coverage.ignore_rule_exclusions:
+        statements.append(
+            f"{coverage.ignore_rule_exclusions} path(s) were excluded by ignore rules "
+            "(Semgrep's default list or the project's .semgrepignore) and not scanned."
+        )
+    if coverage.size_limit_exclusions:
+        statements.append(
+            f"{coverage.size_limit_exclusions} file(s) above Semgrep's 1 MB size limit were not scanned."
+        )
+    return statements or ["Semgrep reported no excluded paths beyond .git, node_modules and .venv."]
+
+
 def build_json_report(scan: ScanResult, target: Path, rules: Path) -> dict[str, Any]:
     """Return only validated findings and safe diagnostic codes."""
     return {
@@ -58,11 +103,7 @@ def build_json_report(scan: ScanResult, target: Path, rules: Path) -> dict[str, 
         "summary": {"finding_count": len(scan.findings), "issue_count": len(scan.issues), "by_severity": _severity_counts(scan)},
         "findings": [finding.model_dump(mode="json") for finding in scan.findings],
         "issues": _safe_issues(scan.issues),
-        "coverage": {
-            "paths_skipped": "semgrep_skipped_paths" in scan.issues,
-            "rules_skipped": "semgrep_skipped_rules" in scan.issues,
-            "no_files_scanned": "no_files_scanned" in scan.issues,
-        },
+        "coverage": _coverage_report(scan),
         "limitations": list(_LIMITATIONS),
     }
 
@@ -89,6 +130,7 @@ def render_text(scan: ScanResult, target: Path, rules: Path) -> str:
     lines.append("Issues: " + (", ".join(issues) if issues else "none"))
     if "semgrep_skipped_paths" in scan.issues:
         lines.append("Coverage: some paths were skipped; path details are withheld.")
+    lines.extend(f"Coverage: {statement}" for statement in coverage_statements(scan))
     if "semgrep_skipped_rules" in scan.issues:
         lines.append("Coverage: some rules were skipped.")
     if "no_files_scanned" in scan.issues:
