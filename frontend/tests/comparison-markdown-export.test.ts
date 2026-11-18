@@ -51,6 +51,17 @@ describe('검사 비교 Markdown 보고서', () => {
     expect(report).toContain('CLI의 정식 보안 검토 보고서를 대체하지 않습니다');
   });
 
+  it('미관찰 원인에 대한 검사 범위 진술을 화면과 같은 문장으로 기록한다', () => {
+    const report = createComparisonMarkdown(
+      snapshot([finding('03')], {}, { receivedAt: '2026-11-01T00:00:00.000Z' }),
+      snapshot([], { limitations: ['finding_count_not_confirmed_vulnerability_count', 'skipped_paths_not_collected'] }, { receivedAt: '2026-11-01T01:00:00.000Z' }),
+    );
+    const section = report.slice(report.indexOf('## 검사 범위와 미관찰 원인'), report.indexOf('## 이번 검사에서만 관찰'));
+    expect(section).toContain('기준 검사에서만 관찰된 Finding: 현재 검사의 제외 경로 정보를 확인할 수 없어');
+    expect(section).toContain('이번 검사에서만 관찰된 Finding: 기준 검사는 기본 제외');
+    expect(section).not.toMatch(/해결됐|수정됐|수정 완료|해결 완료/);
+  });
+
   it('두 Finding이 모두 0개인 비교 보고서를 생성한다', () => {
     const report = createComparisonMarkdown(snapshot(), snapshot([], {}, { receivedAt: '2026-11-01T02:00:00.000Z' }));
     expect(report).toContain('기준 검사 Finding 총수: 0');

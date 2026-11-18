@@ -4,6 +4,7 @@ import { investigationApi, type InvestigationEvaluation, type InvestigationCateg
 import type { ApiFinding, ClaimType, FindingKind, Options, ScanResponse, Severity } from '../api/types';
 import { createReviewMarkdown, downloadReviewMarkdown, type ScanContext } from '../features/scans/markdownExport';
 import { compareScanSnapshots, type ComparisonBlockReason, type ComparisonGroups, type ScanSnapshot } from '../features/scans/compare';
+import { absenceScopeStatement } from '../features/scans/comparisonScope';
 import { createComparisonMarkdown, downloadComparisonMarkdown } from '../features/scans/comparisonMarkdownExport';
 import { countAnalystReviewStatuses, emptyAnalystReviewState, filterFindingsByAnalystStatus, getAnalystReviewEntry, hasAnalystReviewWork, rescanReplacesAnalystReview, setAnalystReviewNote, setAnalystReviewStatus, type AnalystReviewFilter, type AnalystReviewState, type AnalystReviewStatus } from '../features/scans/analystReview';
 import { createAnalystReviewMarkdown, downloadAnalystReviewMarkdown } from '../features/scans/analystReviewMarkdownExport';
@@ -998,6 +999,8 @@ function ScanComparisonPanel({
           <div className="comparison-review">
             <section className="comparison-finding-list" aria-label={`${comparisonCategoryLabels[category]} 목록`}>
               <h3>{comparisonCategoryLabels[category]}</h3>
+              {category === 'baselineOnly' && current && <p className="comparison-limitation comparison-scope-note" role="note">{absenceScopeStatement(current.scan, '현재 검사')}</p>}
+              {category === 'currentOnly' && baseline && <p className="comparison-limitation comparison-scope-note" role="note">{absenceScopeStatement(baseline.scan, '기준 검사')}</p>}
               {items.length === 0 ? <p>이 범주에 해당하는 항목이 없습니다.</p> : <ul>{items.map((item) => <li key={item.findingId}>
                 <button type="button" className={item.findingId === selected?.findingId ? 'selected' : ''} aria-pressed={item.findingId === selected?.findingId} onClick={() => setSelectedFindingId(item.findingId)}>
                   <span className={`comparison-severity ${item.finding.severity}`}>{severityLabels[item.finding.severity]}</span>

@@ -292,13 +292,18 @@ test('실제 FastAPI·Semgrep에서 분석가 검토·백업·비교 전체 업�
   await page.getByRole('group', { name: '비교 항목 범주' }).getByRole('button', { name: /기준 검사에서만 관찰/ }).click();
   const baselineOnlyList = page.getByRole('region', { name: '기준 검사에서만 관찰 목록' });
   await expect(baselineOnlyList).toContainText('retired.js');
+  // retired.js was really edited and nothing was excluded: real Semgrep reports no exclusions, so the
+  // note may rule out exclusion as the cause, and still must not call the Finding fixed.
+  const fixedScopeNote = baselineOnlyList.getByRole('note');
+  await expect(fixedScopeNote).toContainText('현재 검사는 기본 제외(.git, node_modules, .venv) 외에 제외한 경로가 없다고 보고했습니다');
+  await expect(fixedScopeNote).toContainText('코드 수정, 파일 삭제·이동, 규칙 매치 변화 같은 다른 원인은 이 비교로 구분할 수 없습니다');
   await baselineOnlyList.getByRole('button', { name: /retired\.js/ }).click();
   await expect(comparisonFollowup).toContainText('현재 검사에서 관찰되지 않는다는 사실은 취약점 수정이나 해결 완료의 증거가 아닙니다');
   await expect(comparisonFollowup).toContainText('읽기 전용');
   await expect(comparisonFollowup.getByRole('button', { name: '현재 Finding 검토하기' })).toHaveCount(0);
 
   const comparisonMarkdown = await downloadText(page, page.getByRole('button', { name: '비교 보고서 내보내기' }), 'ai-code-security-comparison.md');
-  for (const value of ['이번 검사에서만 관찰: 1', '양쪽에서 관찰: 1', '기준 검사에서만 관찰: 1', stableA!.finding_id, retiredB!.finding_id, addedC!.finding_id, 'Semgrep 버전: 1.182.1', '취약점의 발생·해결', '재검사 후속 검토 안내']) {
+  for (const value of ['이번 검사에서만 관찰: 1', '양쪽에서 관찰: 1', '기준 검사에서만 관찰: 1', stableA!.finding_id, retiredB!.finding_id, addedC!.finding_id, 'Semgrep 버전: 1.182.1', '취약점의 발생·해결', '재검사 후속 검토 안내', '## 검사 범위와 미관찰 원인']) {
     expect(comparisonMarkdown).toContain(value);
   }
   expect(comparisonMarkdown).not.toContain(memoA);
