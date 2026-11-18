@@ -1,5 +1,6 @@
 import type { ApiFinding, ClaimType, ScanStatus } from '../../api/types';
 import { compareScanSnapshots, type ScanSnapshot } from './compare';
+import { absenceScopeStatement } from './comparisonScope';
 import { escapeMarkdownText } from './markdownExport';
 import { createRescanFollowup, type RescanFollowup, type RescanObservationCategory } from './rescanFollowup';
 
@@ -135,6 +136,11 @@ export function createComparisonMarkdown(baseline: ScanSnapshot | null, current:
     `- 이번 검사에서만 관찰: ${groups.currentOnly.length}`,
     `- 양쪽에서 관찰: ${groups.shared.length}`,
     `- 기준 검사에서만 관찰: ${groups.baselineOnly.length}`,
+    '',
+    '## 검사 범위와 미관찰 원인',
+    '',
+    `- 기준 검사에서만 관찰된 Finding: ${text(absenceScopeStatement(current.scan, '현재 검사'))}`,
+    `- 이번 검사에서만 관찰된 Finding: ${text(absenceScopeStatement(baseline.scan, '기준 검사'))}`,
     '',
     ...singleFindingSection('이번 검사에서만 관찰', groups.currentOnly),
     ...sharedFindingSection(baseline.scan.findings, groups.shared),

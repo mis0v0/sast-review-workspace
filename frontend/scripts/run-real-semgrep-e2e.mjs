@@ -15,6 +15,7 @@ const targetDirectory = join(temporaryDirectory, 'synthetic-project');
 const secondTargetDirectory = join(temporaryDirectory, 'synthetic-project-selected');
 const workflowTargetDirectory = join(temporaryDirectory, 'synthetic-project-workflow');
 const investigationTargetDirectory = join(temporaryDirectory, 'synthetic-project-investigation');
+const scopeTargetDirectory = join(temporaryDirectory, 'synthetic-project-scope');
 const rulesDirectory = join(temporaryDirectory, 'trusted-rules');
 const token = randomBytes(32).toString('base64url');
 const canary = 'SYNTHETIC_BROWSER_CANARY_MUST_NOT_LEAK';
@@ -73,6 +74,10 @@ try {
   await mkdir(secondTargetDirectory);
   await mkdir(workflowTargetDirectory);
   await mkdir(investigationTargetDirectory);
+  await mkdir(scopeTargetDirectory);
+  for (const name of ['kept', 'hidden']) {
+    await writeFile(join(scopeTargetDirectory, `${name}.js`), [`function ${name}(input) {`, '  return eval(input);', '}', ''].join('\n'), { mode: 0o600 });
+  }
   await mkdir(join(rulesDirectory, 'experimental'), { recursive: true });
   for (const relativeRule of [
     'security-baseline.yml',
@@ -148,6 +153,7 @@ try {
         { id: 'synthetic-selected', label: 'Synthetic Selected', path: secondTargetDirectory },
         { id: 'synthetic-workflow', label: 'Synthetic Workflow', path: workflowTargetDirectory },
         { id: 'synthetic-investigation', label: process.env.D9_CASE ? 'Upstream EJS (격리 사본)' : 'Synthetic Investigation', path: investigationTargetDirectory },
+        { id: 'synthetic-scope', label: 'Synthetic Scope', path: scopeTargetDirectory },
       ]),
       AI_CODE_SECURITY_RULES_DIR: rulesDirectory,
       AI_CODE_SECURITY_API_TOKEN: token,
@@ -170,6 +176,7 @@ try {
       BROWSER_E2E_PRIVATE_PATH: temporaryDirectory,
       BROWSER_E2E_WORKFLOW_PATH: workflowTargetDirectory,
       BROWSER_E2E_INVESTIGATION_PATH: investigationTargetDirectory,
+      BROWSER_E2E_SCOPE_PATH: scopeTargetDirectory,
       BROWSER_E2E_RULES_PATH: rulesDirectory,
       BROWSER_E2E_OUTPUT_DIR: join(temporaryDirectory, 'playwright-results'),
       SEMGREP_REQUIRED: '1',

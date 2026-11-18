@@ -84,6 +84,33 @@ describe('검사 결과 비교 UI', () => {
     expect(within(comparisonDetail).queryByRole('button', { name: '현재 Finding 검토하기' })).not.toBeInTheDocument();
   });
 
+  it('미관찰 범주마다 상대 검사의 제외 범위를 같은 문장으로 보여 준다', async () => {
+    const hidden = finding('hidden');
+    installApi([
+      scan([hidden]),
+      scan([], { limitations: ['finding_count_not_confirmed_vulnerability_count', 'paths_excluded_by_ignore_rules'] }),
+    ]);
+    const user = userEvent.setup(); render(<App/>);
+    await screen.findByText('API 연결됨');
+    await runScan(user);
+    await user.click(screen.getByRole('button', { name: /비교 기준/ }));
+    await runScan(user);
+    await user.click(screen.getByText('검사 결과 비교'));
+
+    // The comparison stays available: an exclusion does not block it (A8-R1), it is stated next to the absence.
+    await user.click(screen.getByRole('button', { name: /기준 검사에서만 관찰/ }));
+    const baselineList = screen.getByRole('region', { name: '기준 검사에서만 관찰 목록' });
+    expect(within(baselineList).getByRole('note')).toHaveTextContent('현재 검사는 무시 규칙(.semgrepignore 또는 Semgrep 기본 제외)으로 일부 경로를 제외했습니다');
+    expect(within(baselineList).getByRole('note')).toHaveTextContent('어떤 파일이 제외됐는지 알 수 없습니다');
+    expect(within(baselineList).getByRole('button', { name: /src\/hidden\.js:7/ })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /이번 검사에서만 관찰/ }));
+    expect(within(screen.getByRole('region', { name: '이번 검사에서만 관찰 목록' })).getByRole('note')).toHaveTextContent('기준 검사는 기본 제외(.git, node_modules, .venv) 외에 제외한 경로가 없다고 보고했습니다');
+
+    await user.click(screen.getByRole('button', { name: /양쪽에서 관찰/ }));
+    expect(within(screen.getByRole('region', { name: '양쪽에서 관찰 목록' })).queryByRole('note')).not.toBeInTheDocument();
+  });
+
   it('현재 검사 항목의 후속 검토에서 필터를 해제하고 현재 Finding 상세와 Triage로 이동한다', async () => {
     const shared = finding('shared');
     const beforeOnly = finding('before');
