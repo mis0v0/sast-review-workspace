@@ -1,0 +1,117 @@
+// Regenerate committed browser evidence as one explicit, reviewable step.
+//
+//   node scripts/capture-browser-evidence.mjs -- <command...>
+//
+// Browser tests always write evidence to frontend/test-results/evidence (ignored).
+// This script runs the given test command and, only if it succeeds and every
+// artifact it produced is valid, copies those artifacts into docs/assets for
+// review with `git diff`. It never runs over uncommitted docs/assets changes,
+// so nothing a person changed there can be overwritten.
+import { spawnSync } from 'node:child_process';
+import { copyFile, lstat, mkdir, readFile, readdir, rm } from 'node:fs/promises';
+import { arch, platform, release } from 'node:os';
+import { dirname, join, relative, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const frontendDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const repositoryDirectory = resolve(frontendDirectory, '..');
+const stagingDirectory = join(frontendDirectory, 'test-results', 'evidence');
+const evidenceDirectory = join(repositoryDirectory, 'docs', 'assets');
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+function fail(message, code = 1) {
+  console.error(`evidence capture: ${message}`);
+  process.exit(code);
+}
+
+function git(...args) {
+  const result = spawnSync('git', ['-C', repositoryDirectory, ...args], { encoding: 'utf8' });
+  if (result.status !== 0) fail(`git ${args[0]} failed: ${result.stderr.trim()}`);
+  return result.stdout;
+}
+
+const evidenceChanges = () => git('status', '--porcelain=v1', '--untracked-files=all', '--', 'docs/assets');
+
+async function listFiles(directory) {
+  const entries = await readdir(directory, { withFileTypes: true }).catch((error) => {
+    if (error.code === 'ENOENT') return [];
+    throw error;
+  });
+  const files = [];
+  for (const entry of entries) {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) files.push(...await listFiles(path));
+    else files.push(path);
+  }
+  return files;
+}
+
+async function validate(path) {
+  const info = await lstat(path);
+  if (!info.isFile()) return 'not a regular file';
+  if (info.size === 0) return 'empty';
+  const bytes = await readFile(path);
+  if (path.endsWith('.png')) return bytes.subarray(0, 8).equals(PNG_SIGNATURE) ? null : 'not a PNG image';
+  if (path.endsWith('.json')) {
+    try { JSON.parse(bytes.toString('utf8')); return null; } catch { return 'invalid JSON'; }
+  }
+  return 'unexpected file type (only .png and .json are promoted)';
+}
+
+const separator = process.argv.indexOf('--');
+const command = separator === -1 ? [] : process.argv.slice(separator + 1);
+if (command.length === 0) fail('usage: capture-browser-evidence.mjs -- <test command...>', 2);
+
+if (evidenceChanges() !== '') {
+  fail('docs/assets has uncommitted changes. Commit or stash them first; nothing was run or changed.', 2);
+}
+
+await rm(stagingDirectory, { recursive: true, force: true });
+const run = spawnSync(command[0], command.slice(1), {
+  cwd: frontendDirectory,
+  stdio: 'inherit',
+  // CI=1 stops Playwright from reusing an unrelated server that already holds the preview port.
+  env: { ...process.env, CI: '1' },
+});
+
+const leaked = evidenceChanges();
+if (leaked !== '') {
+  fail(`the test run wrote into docs/assets directly; nothing was promoted. Review these changes:\n${leaked}`);
+}
+if (run.error || run.status !== 0) {
+  fail(`the test command did not succeed (${run.error?.message ?? `exit ${run.status ?? run.signal}`}); nothing was promoted.`);
+}
+
+const files = await listFiles(stagingDirectory);
+if (files.length === 0) fail('the test run produced no evidence; nothing was promoted.');
+const problems = [];
+for (const file of files) {
+  const problem = await validate(file);
+  if (problem) problems.push(`${relative(stagingDirectory, file)}: ${problem}`);
+}
+if (problems.length > 0) fail(`invalid evidence; nothing was promoted:\n  ${problems.join('\n  ')}`);
+
+const promoted = [];
+for (const file of files.sort()) {
+  const target = join(evidenceDirectory, relative(stagingDirectory, file));
+  await mkdir(dirname(target), { recursive: true });
+  await copyFile(file, target);
+  promoted.push(relative(repositoryDirectory, target).split(sep).join('/'));
+}
+
+const capturedDirectories = new Set(promoted.map((path) => path.split('/').slice(0, 3).join('/')));
+const notRegenerated = git('ls-files', '--', ...capturedDirectories).split('\n')
+  .filter((path) => path && !promoted.includes(path));
+const playwright = await readFile(join(frontendDirectory, 'node_modules', '@playwright', 'test', 'package.json'), 'utf8')
+  .then((text) => JSON.parse(text).version, () => 'unknown');
+
+console.log(`\nPromoted ${promoted.length} evidence files into docs/assets.`);
+if (notRegenerated.length > 0) {
+  console.log(`${notRegenerated.length} committed files in the same directories were not regenerated by this run and may be stale:`);
+  for (const path of notRegenerated) console.log(`  ${path}`);
+}
+console.log('\nProvenance (include in the commit message):');
+console.log(`  source commit: ${git('rev-parse', 'HEAD').trim()}${git('status', '--porcelain').trim() ? ' (with uncommitted changes)' : ''}`);
+console.log(`  environment:   ${platform()} ${release()} ${arch()}, Node ${process.version}, Playwright ${playwright}`);
+console.log(`  command:       ${command.join(' ')}`);
+console.log('\nReview with `git diff --stat -- docs/assets` before committing.');

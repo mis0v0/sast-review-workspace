@@ -1,3 +1,4 @@
+import { evidencePath } from './evidence';
 import { expect, test } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 
@@ -119,9 +120,9 @@ test('explicit investigation mode connects two exact runs, displays conservative
     expect(metrics.scroll, `horizontal overflow at ${width}px`).toBeLessThanOrEqual(metrics.client);
   }
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.screenshot({ path: '../docs/assets/er-c3d-investigation-results-1440.png', fullPage: true });
+  await page.screenshot({ path: evidencePath('er-c3d-investigation-results-1440.png'), fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.screenshot({ path: '../docs/assets/er-c3d-investigation-results-390.png', fullPage: true });
+  await page.screenshot({ path: evidencePath('er-c3d-investigation-results-390.png'), fullPage: true });
 
   await page.getByRole('button', { name: '조사 증거 해제' }).click();
   await expect(gapMap).toHaveCount(0);

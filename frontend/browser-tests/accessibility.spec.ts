@@ -1,3 +1,4 @@
+import { evidencePath } from './evidence';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
@@ -6,7 +7,7 @@ import { resolve } from 'node:path';
 // Every mocked API response names one server process, as the real server does.
 const MOCK_SERVER = { 'X-Server-Instance': 'mock-server-instance-01' };
 
-const evidenceDir = resolve(process.cwd(), '../docs/assets/phase8g');
+const evidenceDir = evidencePath('phase8g');
 
 const finding = {
   finding_id: 'semgrep:0123456789abcdef01234567',

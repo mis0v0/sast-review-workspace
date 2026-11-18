@@ -1,3 +1,4 @@
+import { evidencePath } from './evidence';
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { expect, test } from '@playwright/test';
@@ -256,7 +257,7 @@ test('긴 규칙 ID와 파일 경로는 줄바꿈되며 모든 화면 폭에서 
   await expect(page.locator('.finding-row .unverified-badge')).toContainText('미확인 후보');
   const ruleStyle = await page.locator('.row-rule-id').evaluate((element) => getComputedStyle(element).whiteSpace);
   expect(ruleStyle).toBe('normal');
-  const shots = resolve(process.cwd(), '../docs/assets/ui-h8-readability');
+  const shots = evidencePath('ui-h8-readability');
   await mkdir(shots, { recursive: true });
   await page.screenshot({ path: resolve(shots, 'long-finding-metadata-1440x900.png') });
 
@@ -301,7 +302,7 @@ test('검색 및 필터 Toolbar는 지정한 모든 폭에서 가로 넘침이 �
 
 
 test('합성 Finding 화면 스크린샷을 필수 폭과 비교 상태별로 저장한다', async ({ page }) => {
-  const shots = resolve(process.cwd(), '../docs/assets/ui-h8-readability');
+  const shots = evidencePath('ui-h8-readability');
   await mkdir(shots, { recursive: true });
   await installApi(page);
   await page.setViewportSize({ width: 1440, height: 900 });

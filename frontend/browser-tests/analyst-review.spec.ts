@@ -1,3 +1,4 @@
+import { evidencePath } from './evidence';
 import { expect, test } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { mkdir } from 'node:fs/promises';
@@ -21,7 +22,7 @@ test('검토 가이드 합성 화면: High validated, High rejected, Medium vali
   await page.route('**/api/v1/health', (route) => route.fulfill({ headers: MOCK_SERVER, json: { status: 'ok', service: 'ai-code-security-analyzer' } }));
   await page.route('**/api/v1/options', (route) => route.fulfill({ headers: MOCK_SERVER, json: { targets: [{ id: 'project-a', label: 'Synthetic Project' }], rule_profiles: [{ id: 'baseline', label: 'Baseline Rules', experimental: false }] } }));
   await page.route('**/api/v1/scans', (route) => route.fulfill({ headers: MOCK_SERVER, json: scan([current]) }));
-  const evidenceDir = resolve(process.cwd(), '../docs/assets/phase8k');
+  const evidenceDir = evidencePath('phase8k');
   await mkdir(evidenceDir, { recursive: true });
 
   async function capture(name: string, width = 1440, height = 900) {
