@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page, type Response } from '@playwright/test';
 import { readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -11,15 +11,14 @@ test('real comparison states the current scan exclusions next to findings that d
   const targetPath = process.env.BROWSER_E2E_SCOPE_PATH;
   const rulesPath = process.env.BROWSER_E2E_RULES_PATH;
   if (!token || !targetPath || !rulesPath) throw new Error('real_scope_e2e_configuration_required');
-  const scans: Array<{ limitations: string[]; scan_status: string; findings: Array<{ file_path: string }> }> = [];
-  page.on('response', async (response) => {
-    if (new URL(response.url()).pathname === '/api/v1/scans') scans.push(await response.json());
-  });
+  const scans: Scan[] = [];
 
+  // Each scan is tied to the one POST response its click triggers, and its body is parsed before
+  // runScan returns, so the assertions below never read a scan that has not been stored yet.
   const runScan = async () => {
-    const done = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/v1/scans');
+    const done = page.waitForResponse((response) => response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/v1/scans');
     await page.getByRole('button', { name: '검사 실행' }).click();
-    await done;
+    scans.push(await scanBody(await done));
     await expect(page.getByRole('heading', { name: '정상 완료' })).toBeVisible();
   };
 
@@ -96,6 +95,18 @@ test('real comparison states the current scan exclusions next to findings that d
     await writeFile(rulePath, originalRule);
   }
 });
+
+type Scan = { limitations: string[]; scan_status: string; findings: Array<{ file_path: string }> };
+
+// A failed or malformed scan response stops the test instead of becoming an entry in `scans`.
+async function scanBody(response: Response): Promise<Scan> {
+  if (response.status() !== 200) throw new Error(`scan_response_status_${response.status()}`);
+  const scan = await response.json() as Partial<Scan> | null;
+  if (typeof scan !== 'object' || scan === null || typeof scan.scan_status !== 'string' || !Array.isArray(scan.limitations) || !Array.isArray(scan.findings)) {
+    throw new Error('scan_response_malformed');
+  }
+  return scan as Scan;
+}
 
 async function download(page: Page): Promise<string> {
   const event = page.waitForEvent('download');
