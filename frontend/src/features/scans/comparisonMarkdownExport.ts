@@ -1,6 +1,6 @@
 import type { ApiFinding, ClaimType, ScanStatus } from '../../api/types';
 import { compareScanSnapshots, type ScanSnapshot } from './compare';
-import { absenceScopeStatement } from './comparisonScope';
+import { absenceScopeStatement, ruleContentLabels, ruleContentState, ruleContentStatement } from './comparisonScope';
 import { escapeMarkdownText } from './markdownExport';
 import { createRescanFollowup, type RescanFollowup, type RescanObservationCategory } from './rescanFollowup';
 
@@ -124,6 +124,7 @@ export function createComparisonMarkdown(baseline: ScanSnapshot | null, current:
     `- 기준 규칙 프로필: ${text(baseline.context.ruleProfileLabel)} (${text(baseline.context.ruleProfileId)})${baseline.context.experimental ? ' · Experimental' : ' · Baseline'}`,
     `- 현재 규칙 프로필: ${text(current.context.ruleProfileLabel)} (${text(current.context.ruleProfileId)})${current.context.experimental ? ' · Experimental' : ' · Baseline'}`,
     `- Semgrep 버전: ${text(baseline.scan.semgrep_version!)}`,
+    `- 규칙 파일 내용: ${ruleContentLabels[ruleContentState(baseline.context, current.context)]}`,
     `- 기준 검사 상태: ${statusLabels[baseline.scan.scan_status]}`,
     `- 현재 검사 상태: ${statusLabels[current.scan.scan_status]}`,
     `- 기준 결과 수신 시각 (브라우저 기록, ISO 8601): ${date(baseline.context.receivedAt)}`,
@@ -141,6 +142,7 @@ export function createComparisonMarkdown(baseline: ScanSnapshot | null, current:
     '',
     `- 기준 검사에서만 관찰된 Finding: ${text(absenceScopeStatement(current.scan, '현재 검사'))}`,
     `- 이번 검사에서만 관찰된 Finding: ${text(absenceScopeStatement(baseline.scan, '기준 검사'))}`,
+    `- 규칙 파일: ${text(ruleContentStatement(ruleContentState(baseline.context, current.context)))}`,
     '',
     ...singleFindingSection('이번 검사에서만 관찰', groups.currentOnly),
     ...sharedFindingSection(baseline.scan.findings, groups.shared),

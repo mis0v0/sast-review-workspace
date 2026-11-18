@@ -51,6 +51,21 @@ describe('검사 비교 Markdown 보고서', () => {
     expect(report).toContain('CLI의 정식 보안 검토 보고서를 대체하지 않습니다');
   });
 
+  it('규칙 파일 내용은 판정 상태만 기록하고 토큰은 내보내지 않는다', () => {
+    const before = 'A'.repeat(22);
+    const after = 'B'.repeat(22);
+    const report = createComparisonMarkdown(
+      snapshot([finding('03')], {}, { receivedAt: '2026-11-01T00:00:00.000Z', ruleContentToken: before }),
+      snapshot([], {}, { receivedAt: '2026-11-01T01:00:00.000Z', ruleContentToken: after }),
+    );
+    expect(report).toContain('- 규칙 파일 내용: 다름');
+    expect(report).toContain('- 규칙 파일: 같은 규칙 프로필이지만 두 검사에서 각 검사의 실행 직전과 직후에 확인한 선택 규칙 파일의 바이트가 다릅니다');
+    expect(report).not.toContain(before);
+    expect(report).not.toContain(after);
+    const unknown = createComparisonMarkdown(snapshot([finding('03')]), snapshot([], {}, { receivedAt: '2026-11-01T02:00:00.000Z' }));
+    expect(unknown).toContain('- 규칙 파일 내용: 확인 불가');
+  });
+
   it('미관찰 원인에 대한 검사 범위 진술을 화면과 같은 문장으로 기록한다', () => {
     const report = createComparisonMarkdown(
       snapshot([finding('03')], {}, { receivedAt: '2026-11-01T00:00:00.000Z' }),

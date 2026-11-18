@@ -21,6 +21,7 @@ from ai_code_security_analyzer.finding_disappearance_evaluator import MAX_EVALUA
 from ai_code_security_analyzer.investigation_evidence_registry import (
     MAX_RUNS, MAX_RUN_RECORD_BYTES, EvidenceRegistryError, RegistryErrorCode, RunEvidenceRegistry,
 )
+from ai_code_security_analyzer.api.security import RULE_CONTENT_HEADER
 from ai_code_security_analyzer.services.scan_service import ScanService, ServiceError
 
 
@@ -91,14 +92,19 @@ def options(request: Request) -> OptionsResponse:
 @router.post("/scans")
 def create_scan(payload: ScanRequest, request: Request) -> Response:
     service: ScanService = request.app.state.scan_service
+    scan_with_token = getattr(service, "scan_with_rule_content_token", None)
     try:
-        result = service.scan(payload.target_id, payload.rule_profile_id)
+        if scan_with_token is None:
+            result, token = service.scan(payload.target_id, payload.rule_profile_id), None
+        else:
+            result, token = scan_with_token(payload.target_id, payload.rule_profile_id)
     except ServiceError as exc:
         return JSONResponse(status_code=exc.status_code, content=ErrorResponse(error=exc.code).model_dump())
     serialized = result.model_dump_json().encode("utf-8")
     if len(serialized) > request.app.state.api_settings.max_response_bytes:
         return JSONResponse(status_code=413, content=ErrorResponse(error="response_limit_exceeded").model_dump())
-    return Response(content=serialized, status_code=200, media_type="application/json")
+    headers = {RULE_CONTENT_HEADER: token} if token else None
+    return Response(content=serialized, status_code=200, media_type="application/json", headers=headers)
 
 
 @investigation_router.post("/investigation-scans")

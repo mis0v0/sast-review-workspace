@@ -84,6 +84,31 @@ describe('검사 결과 비교 UI', () => {
     expect(within(comparisonDetail).queryByRole('button', { name: '현재 Finding 검토하기' })).not.toBeInTheDocument();
   });
 
+  it.each([
+    ['A'.repeat(22), 'B'.repeat(22), true, '같은 규칙 프로필이지만 두 검사에서 각 검사의 실행 직전과 직후에 확인한 선택 규칙 파일의 바이트가 다릅니다'],
+    ['A'.repeat(22), 'A'.repeat(22), false, '두 검사에서 각 검사의 실행 직전과 직후에 확인한 선택 규칙 파일의 바이트가 모두 같습니다'],
+    [null, 'A'.repeat(22), false, '선택 규칙 파일 바이트가 같은지 확인할 수 없습니다'],
+  ])('규칙 내용 토큰 %s → %s 를 비교에 진술하고 비교는 막지 않는다', async (before, after, flagged, statement) => {
+    const withToken = (body: ScanResponse, token: string | null) => new Response(JSON.stringify(body), { status: 200, headers: {
+      'Content-Type': 'application/json', 'X-Server-Instance': 'test-server-instance-01', ...(token ? { 'X-Rule-Content-Token': token } : {}),
+    } });
+    installApi([withToken(scan([finding('kept')]), before), withToken(scan([]), after)]);
+    const user = userEvent.setup(); render(<App/>);
+    await screen.findByText('API 연결됨');
+    await runScan(user);
+    await user.click(screen.getByRole('button', { name: /비교 기준/ }));
+    await runScan(user);
+
+    const summary = screen.getByText(/이번만 0 · 양쪽 0 · 기준만 1/);
+    if (flagged) expect(summary).toHaveTextContent('규칙 내용 다름');
+    else expect(summary).not.toHaveTextContent('규칙 내용');
+    await user.click(screen.getByText('검사 결과 비교'));
+    const region = screen.getByRole('region', { name: '검사 결과 비교' });
+    expect(within(region).getAllByRole('note').some((note) => note.textContent?.includes(statement))).toBe(true);
+    expect(region).not.toHaveTextContent('A'.repeat(22));
+    expect(within(region).getByRole('button', { name: /기준 검사에서만 관찰/ })).toBeInTheDocument();
+  });
+
   it('미관찰 범주마다 상대 검사의 제외 범위를 같은 문장으로 보여 준다', async () => {
     const hidden = finding('hidden');
     installApi([

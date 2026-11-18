@@ -1,4 +1,37 @@
 import type { ScanResponse } from '../../api/types';
+import type { ScanContext } from './markdownExport';
+
+/**
+ * Whether two scans of one profile used the same rule file bytes, from the opaque tokens the server
+ * returned. Tokens are only meaningful within one server process, which the comparison already requires.
+ */
+export type RuleContentState = 'same' | 'different' | 'unknown';
+
+const RULE_CONTENT_TOKEN = /^[A-Za-z0-9_-]{22}$/;
+
+export function ruleContentState(baseline: ScanContext, current: ScanContext): RuleContentState {
+  const before = baseline.ruleContentToken;
+  const after = current.ruleContentToken;
+  if (typeof before !== 'string' || typeof after !== 'string' || !RULE_CONTENT_TOKEN.test(before) || !RULE_CONTENT_TOKEN.test(after)) return 'unknown';
+  return before === after ? 'same' : 'different';
+}
+
+export const ruleContentLabels: Record<RuleContentState, string> = { same: '같음', different: '다름', unknown: '확인 불가' };
+
+// ER-D6 item 4: each state says when it was observed and what a failure means. The observation is
+// the selected rule file's bytes immediately before and after each Semgrep run, not the rules
+// Semgrep loaded and not its detection behavior (ER-D6 item 5, `loaded_rule_identity_unverified`).
+const OBSERVED = '각 검사의 실행 직전과 직후에 확인한 선택 규칙 파일의 바이트';
+
+export function ruleContentStatement(state: RuleContentState): string {
+  if (state === 'same') {
+    return `두 검사에서 ${OBSERVED}가 모두 같습니다. 규칙 파일 변경을 Finding 차이의 원인으로 볼 근거는 없지만, Semgrep이 실제로 로드한 규칙이나 탐지 동작이 같다는 증명은 아니며 코드 수정이나 취약점 해결의 증거도 아닙니다.`;
+  }
+  if (state === 'different') {
+    return `같은 규칙 프로필이지만 두 검사에서 ${OBSERVED}가 다릅니다. Finding 차이는 코드가 아니라 규칙 변경 때문일 수 있으며, 이 비교로는 둘을 구분할 수 없습니다. 주석만 바꿔도 바이트는 달라집니다. 코드 변화를 보려면 같은 규칙으로 두 검사를 다시 실행해 비교하세요.`;
+  }
+  return '두 검사의 선택 규칙 파일 바이트가 같은지 확인할 수 없습니다. 한쪽 결과에 규칙 파일 확인 정보가 없습니다: 조사 모드 검사였거나, 검사 중 규칙 파일이 바뀌었거나, 규칙 파일을 안전하게 읽을 수 없었거나, 서버의 기록 한도를 넘었거나, 이 정보를 제공하지 않는 서버일 수 있습니다. 규칙 변경이 Finding 차이의 원인일 수 있습니다.';
+}
 
 /**
  * What one scan's own coverage report says about files left out of it.

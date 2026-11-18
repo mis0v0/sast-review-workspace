@@ -11,7 +11,13 @@ export interface Attested<T> {
   readonly serverInstanceId: string | null;
 }
 
-async function request(path: string, token?: string, body?: object): Promise<Attested<unknown>> {
+/** Opaque per-server token for the rule file content a scan used; anything malformed is treated as absent. */
+function readRuleContentToken(response: Pick<Response, 'headers'>): string | null {
+  const value = response.headers.get('X-Rule-Content-Token');
+  return value !== null && /^[A-Za-z0-9_-]{22}$/.test(value) ? value : null;
+}
+
+async function request(path: string, token?: string, body?: object): Promise<Attested<unknown> & { readonly ruleContentToken: string | null }> {
   const headers = new Headers();
   if (token) headers.set('X-Local-API-Token', token);
   if (body) headers.set('Content-Type', 'application/json');
@@ -26,7 +32,7 @@ async function request(path: string, token?: string, body?: object): Promise<Att
     const code = typeof value === 'object' && value !== null && 'error' in value && typeof value.error === 'string' && /^[a-z_]{1,64}$/.test(value.error) ? value.error : 'request_failed';
     throw new ApiError(response.status, code, serverInstanceId);
   }
-  return { value, serverInstanceId };
+  return { value, serverInstanceId, ruleContentToken: readRuleContentToken(response) };
 }
 
 export const api = {
@@ -35,8 +41,8 @@ export const api = {
     const { value, serverInstanceId } = await request('/api/v1/options');
     return { value: parseOptions(value), serverInstanceId };
   },
-  async scan(token: string, targetId: string, ruleProfileId: string): Promise<Attested<ScanResponse>> {
-    const { value, serverInstanceId } = await request('/api/v1/scans', token, { target_id: targetId, rule_profile_id: ruleProfileId });
-    return { value: parseScan(value), serverInstanceId };
+  async scan(token: string, targetId: string, ruleProfileId: string): Promise<Attested<ScanResponse> & { readonly ruleContentToken: string | null }> {
+    const { value, serverInstanceId, ruleContentToken } = await request('/api/v1/scans', token, { target_id: targetId, rule_profile_id: ruleProfileId });
+    return { value: parseScan(value), serverInstanceId, ruleContentToken };
   },
 };

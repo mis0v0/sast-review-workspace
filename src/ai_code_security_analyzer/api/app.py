@@ -16,6 +16,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from ai_code_security_analyzer.api.routes import AppRateLimiter, investigation_router, router
 from ai_code_security_analyzer.api.schemas import ErrorResponse
 from ai_code_security_analyzer.api.security import (
+    RULE_CONTENT_HEADER,
     SERVER_INSTANCE_HEADER,
     ApiBoundaryMiddleware,
     SecurityHeadersMiddleware,
@@ -76,7 +77,7 @@ def create_app(
             allow_methods=["GET", "POST"],
             allow_headers=["Content-Type", "X-Local-API-Token"],
             # A page on an allowed development origin must be able to read it.
-            expose_headers=[SERVER_INSTANCE_HEADER],
+            expose_headers=[SERVER_INSTANCE_HEADER, RULE_CONTENT_HEADER],
             allow_credentials=False,
             max_age=300,
         )
