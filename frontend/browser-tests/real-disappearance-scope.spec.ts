@@ -9,7 +9,8 @@ test('real comparison states the current scan exclusions next to findings that d
   test.setTimeout(90_000);
   const token = process.env.BROWSER_E2E_API_TOKEN;
   const targetPath = process.env.BROWSER_E2E_SCOPE_PATH;
-  if (!token || !targetPath) throw new Error('real_scope_e2e_configuration_required');
+  const rulesPath = process.env.BROWSER_E2E_RULES_PATH;
+  if (!token || !targetPath || !rulesPath) throw new Error('real_scope_e2e_configuration_required');
   const scans: Array<{ limitations: string[]; scan_status: string; findings: Array<{ file_path: string }> }> = [];
   page.on('response', async (response) => {
     if (new URL(response.url()).pathname === '/api/v1/scans') scans.push(await response.json());
@@ -42,6 +43,10 @@ test('real comparison states the current scan exclusions next to findings that d
   expect(scans[1].findings.map((finding) => finding.file_path)).toEqual(['moved.js']);
 
   await page.getByText('검사 결과 비교').click();
+  // Same server, same rule file bytes for both scans: the real header lets the comparison say so.
+  const comparison = page.getByRole('region', { name: '검사 결과 비교' });
+  await expect(comparison.getByRole('note').filter({ hasText: '바이트가 같은 규칙 파일로 실행됐습니다' })).toHaveCount(1);
+  await expect(page.getByText(/이번만 1 · 양쪽 0 · 기준만 2$/)).toBeVisible();
   const categories = page.getByRole('group', { name: '비교 항목 범주' });
   await categories.getByRole('button', { name: /기준 검사에서만 관찰/ }).click();
   const baselineOnly = page.getByRole('region', { name: '기준 검사에서만 관찰 목록' });
@@ -62,6 +67,34 @@ test('real comparison states the current scan exclusions next to findings that d
   expect(section).toContain('어떤 파일이 제외됐는지 알 수 없습니다');
   expect(section).not.toContain(targetPath);
   expect(markdown).not.toContain(token);
+  expect(markdown).toContain('- 규칙 파일 내용: 같음');
+
+  // A8-R3 reproduction: keep the code, change the rule behind the same rule ID and profile.
+  const rulePath = join(rulesPath, 'security-baseline.yml');
+  const originalRule = await readFile(rulePath, 'utf8');
+  const anchor = '  - id: baseline.javascript-dynamic-eval\n';
+  expect(originalRule.split(anchor)).toHaveLength(2);
+  try {
+    await writeFile(rulePath, originalRule.replace(anchor, `${anchor}    paths:\n      exclude:\n        - moved.js\n`));
+    await page.getByRole('navigation', { name: '화면 이동' }).getByRole('button', { name: /검사 시작/ }).click();
+    await runScan();
+    expect(scans[2].findings).toEqual([]);
+    // Semgrep reports no skipped path for a rule-level filter: the coverage report is exactly as before,
+    // so scope evidence alone cannot explain the disappearance.
+    expect(scans[2].limitations).toEqual(scans[1].limitations);
+    await expect(page.getByText(/이번만 0 · 양쪽 0 · 기준만 2 · 규칙 내용 다름/)).toBeVisible();
+    const details = comparison.locator('details.comparison-content');
+    if (!await details.evaluate((element) => (element as HTMLDetailsElement).open)) await page.getByText('검사 결과 비교').click();
+    await expect(comparison.getByRole('note').filter({ hasText: '같은 규칙 프로필이지만 두 검사에 사용된 규칙 파일의 내용이 다릅니다' })).toHaveCount(1);
+    const driftMarkdown = await download(page);
+    expect(driftMarkdown).toContain('- 규칙 파일 내용: 다름');
+    // The report's own disclaimer negates these phrases; only the statements this comparison derives are checked.
+    const driftScope = driftMarkdown.slice(driftMarkdown.indexOf('## 검사 범위와 미관찰 원인'), driftMarkdown.indexOf('## 이번 검사에서만 관찰'));
+    expect(driftScope).toContain('규칙 변경 때문일 수 있으며');
+    expect(driftScope).not.toMatch(/해결됐|수정됐|수정 완료|해결 완료/);
+  } finally {
+    await writeFile(rulePath, originalRule);
+  }
 });
 
 async function download(page: Page): Promise<string> {

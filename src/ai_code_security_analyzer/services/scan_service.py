@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
+import secrets
 import stat
 import threading
 import time
@@ -42,7 +44,9 @@ from ai_code_security_analyzer.scan_evidence_manifest import (
     new_scan_ref,
     unavailable_scope_evidence,
 )
+from ai_code_security_analyzer.code_context import read_regular_file_under_root
 from ai_code_security_analyzer.rule_bytes_identity import (
+    _MAX_RULE_BYTES,
     RuleBytesIdentityError,
     RuleBytesObservation,
     _scan_with_rule_copy,
@@ -50,6 +54,11 @@ from ai_code_security_analyzer.rule_bytes_identity import (
 )
 from ai_code_security_analyzer.semgrep_adapter import ScanStatus, SemgrepAdapter
 from ai_code_security_analyzer.taint_evidence import TaintEvidence, _TRUSTED_RULES
+
+
+# Distinct rule-file contents remembered per server process. Beyond this, new
+# contents get no token and are reported as unknown rather than evicting old ones.
+MAX_RULE_CONTENT_TOKENS = 64
 
 
 class ServiceError(Exception):
@@ -234,6 +243,8 @@ class ScanService:
         self.settings = settings
         self.adapter_factory = adapter_factory
         self._scan_lock = threading.Lock()
+        self._rule_content_lock = threading.Lock()
+        self._rule_content_tokens: dict[tuple[str, str], str] = {}
 
     @property
     def target_options(self) -> tuple[TargetOption, ...]:
@@ -250,6 +261,29 @@ class ScanService:
         response, _manifest = self._scan_with_manifest(target_id, rule_profile_id)
         return response
 
+    def scan_with_rule_content_token(self, target_id: str, rule_profile_id: str) -> tuple[ScanResponse, str | None]:
+        """Run once and also return an opaque token for the rule file content Semgrep loaded.
+
+        Within one server process, two scans of the same profile get the same token
+        exactly when their rule file bytes were identical. The digest itself never
+        leaves this object (ER-D6). ``None`` means the content is unknown.
+        """
+        response, _manifest, digest = self._scan_with_manifest_and_rule_digest(target_id, rule_profile_id)
+        return response, self._rule_content_token(rule_profile_id, digest)
+
+    def _rule_content_token(self, rule_profile_id: str, digest: str | None) -> str | None:
+        if digest is None:
+            return None
+        key = (rule_profile_id, digest)
+        with self._rule_content_lock:
+            token = self._rule_content_tokens.get(key)
+            if token is None:
+                if len(self._rule_content_tokens) >= MAX_RULE_CONTENT_TOKENS:
+                    return None
+                token = secrets.token_urlsafe(16)
+                self._rule_content_tokens[key] = token
+            return token
+
     def _scan_with_manifest(
         self, target_id: str, rule_profile_id: str, *, investigation_verbose: bool = False
     ) -> tuple[ScanResponse, ScanEvidenceManifest]:
@@ -257,6 +291,27 @@ class ScanService:
 
         This private method is for server-side tests and future internal consumers.
         The HTTP route continues to use ``scan`` and never serializes the manifest.
+        """
+        response, manifest, _digest = self._scan_with_manifest_and_rule_digest(
+            target_id, rule_profile_id, investigation_verbose=investigation_verbose
+        )
+        return response, manifest
+
+    def _rule_file_sha256(self, profile: RuleProfile) -> str | None:
+        """Hash the profile's rule file as it is now; ``None`` when it cannot be read safely."""
+        data, issue = read_regular_file_under_root(
+            self.settings.trusted_rules_directory, tuple(profile.relative_path.split("/")), _MAX_RULE_BYTES
+        )
+        return hashlib.sha256(data).hexdigest() if issue is None and data is not None else None
+
+    def _scan_with_manifest_and_rule_digest(
+        self, target_id: str, rule_profile_id: str, *, investigation_verbose: bool = False
+    ) -> tuple[ScanResponse, ScanEvidenceManifest, str | None]:
+        """``_scan_with_manifest`` plus the rule file digest bracketing the Semgrep run.
+
+        Semgrep reads the rule file itself, so the file is hashed immediately before
+        and after the run. Only identical digests describe the rules that were
+        loaded; a change during the run, or an unreadable file, yields ``None``.
         """
         registered = next((item for item in self.settings.registered_targets if item.target_id == target_id), None)
         if registered is None:
@@ -274,10 +329,13 @@ class ScanService:
                 target, links_seen = self._revalidate_target(registered)
                 rules_file = self._rules_file(profile)
                 adapter = self.adapter_factory(self.settings.trusted_rules_directory)
+                digest_before = self._rule_file_sha256(profile)
                 if investigation_verbose:
                     output = adapter._scan_with_evidence(target, rules_file, investigation_verbose=True)
                 else:
                     output = adapter._scan_with_evidence(target, rules_file)
+                digest_after = self._rule_file_sha256(profile)
+                rule_digest = digest_before if digest_before is not None and digest_before == digest_after else None
             except (OSError, ValueError):
                 raise ServiceError(400, "target_not_allowed") from None
             except Exception:
@@ -326,7 +384,7 @@ class ScanService:
                     scope_evidence=unavailable_scope_evidence("manifest_capture_failed"),
                     invocation_id=INVESTIGATION_VERBOSE_INVOCATION_ID if investigation_verbose else INVOCATION_ID,
                 )
-            return response, manifest
+            return response, manifest, rule_digest
         except ServiceError:
             raise
         except Exception:

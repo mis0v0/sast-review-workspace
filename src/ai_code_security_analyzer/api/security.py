@@ -24,6 +24,8 @@ SECURITY_HEADERS = (
 
 
 SERVER_INSTANCE_HEADER = "X-Server-Instance"
+# Opaque per-process token for the rule file content a scan used; equal tokens mean identical bytes.
+RULE_CONTENT_HEADER = "X-Rule-Content-Token"
 _SERVER_INSTANCE_ID = re.compile(r"\A[A-Za-z0-9_-]{16,64}\Z")
 
 
@@ -317,6 +319,6 @@ def valid_token(candidate: str | None, expected: str) -> bool:
 
 
 __all__ = [
-    "SERVER_INSTANCE_HEADER", "ApiBoundaryMiddleware", "SecurityHeadersMiddleware", "new_server_instance_id",
+    "RULE_CONTENT_HEADER", "SERVER_INSTANCE_HEADER", "ApiBoundaryMiddleware", "SecurityHeadersMiddleware", "new_server_instance_id",
     "valid_token",
 ]

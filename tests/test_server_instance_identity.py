@@ -131,7 +131,7 @@ def test_cross_origin_pages_can_read_the_identifier_only_from_allowed_origins(tm
     assert (allowed.status_code, handler_error.status_code) == (200, 404)
     for response in (allowed, handler_error):
         assert response.headers["access-control-allow-origin"] == ALLOWED_ORIGIN
-        assert response.headers["access-control-expose-headers"] == SERVER_INSTANCE_HEADER
+        assert response.headers["access-control-expose-headers"] == f"{SERVER_INSTANCE_HEADER}, X-Rule-Content-Token"
     # Unchanged boundary: its denials carry no CORS grant, so a cross-origin page
     # cannot read them at all. The header is still there for same-origin clients.
     assert boundary_denial.status_code == 401

@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 import pytest
 
 from ai_code_security_analyzer.api.app import create_app, create_app_from_env
+from ai_code_security_analyzer.api.schemas import ScanResponse
 from ai_code_security_analyzer.services.scan_service import ApiSettings, ProjectTarget
 
 
@@ -310,7 +311,17 @@ def test_security_headers_cover_normal_preflight_early_rejections_and_static_ass
 def test_rejected_header_matrix_never_calls_scan_service(tmp_path: Path) -> None:
     client = client_for(tmp_path, allowed_origins=("http://127.0.0.1:8765",))
     scan_calls: list[tuple[object, ...]] = []
-    client.app.state.scan_service.scan = lambda *args: scan_calls.append(args)
+
+    def record(*args):
+        scan_calls.append(args)
+        return ScanResponse(
+            scan_status="completed", completed=True, semgrep_version="1.182.1", finding_count=0, displayed_finding_count=0,
+            omitted_finding_count=0, severity_counts={}, issues=(), findings=(), limitations=(),
+        ), None
+
+    # Intercept every scan entry point the route may use, so this test cannot pass by missing the call.
+    client.app.state.scan_service.scan = lambda *args: record(*args)[0]
+    client.app.state.scan_service.scan_with_rule_content_token = record
     payload = json.dumps({"target_id": "local-project", "rule_profile_id": "baseline"})
     with client:
         cases = [
@@ -328,6 +339,10 @@ def test_rejected_header_matrix_never_calls_scan_service(tmp_path: Path) -> None
     assert all(response.status_code == 400 for response in [duplicate_header, duplicate_origin, duplicate_token, duplicate_type, duplicate_length])
     assert all("x" * 257 not in response.text and "secret" not in response.text for response in cases)
     assert scan_calls == []
+    # Positive control: an accepted request does reach the recorder.
+    with client:
+        accepted = client.post("/api/v1/scans", headers={"X-Local-API-Token": TOKEN, "Content-Type": "application/json"}, content=payload)
+    assert accepted.status_code == 200 and len(scan_calls) == 1
 
 
 def test_internal_error_is_sanitized_and_keeps_security_headers(tmp_path: Path) -> None:
@@ -343,6 +358,7 @@ def test_internal_error_is_sanitized_and_keeps_security_headers(tmp_path: Path) 
         raise RuntimeError("PRIVATE_TRACEBACK_CANARY /private/project")
 
     app.state.scan_service.scan = fail
+    app.state.scan_service.scan_with_rule_content_token = fail
     with TestClient(app, raise_server_exceptions=False) as client:
         response = client.post("/api/v1/scans", headers={"X-Local-API-Token": TOKEN}, json={"target_id": "local-project", "rule_profile_id": "baseline"})
     assert response.status_code == 500

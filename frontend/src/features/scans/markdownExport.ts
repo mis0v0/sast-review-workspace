@@ -15,6 +15,11 @@ export interface ScanContext {
    * It is not project identity and is not exported.
    */
   serverInstanceId?: string | null;
+  /**
+   * Opaque token for the rule file content this scan used, from the same server process. Equal tokens
+   * mean identical rule bytes; absent or null means unknown. It reveals no content and is not exported.
+   */
+  ruleContentToken?: string | null;
 }
 
 export const MAX_REVIEW_MARKDOWN_BYTES = 512 * 1024;

@@ -4,7 +4,7 @@ import { investigationApi, type InvestigationEvaluation, type InvestigationCateg
 import type { ApiFinding, ClaimType, FindingKind, Options, ScanResponse, Severity } from '../api/types';
 import { createReviewMarkdown, downloadReviewMarkdown, type ScanContext } from '../features/scans/markdownExport';
 import { compareScanSnapshots, type ComparisonBlockReason, type ComparisonGroups, type ScanSnapshot } from '../features/scans/compare';
-import { absenceScopeStatement } from '../features/scans/comparisonScope';
+import { absenceScopeStatement, ruleContentState, ruleContentStatement } from '../features/scans/comparisonScope';
 import { createComparisonMarkdown, downloadComparisonMarkdown } from '../features/scans/comparisonMarkdownExport';
 import { countAnalystReviewStatuses, emptyAnalystReviewState, filterFindingsByAnalystStatus, getAnalystReviewEntry, hasAnalystReviewWork, rescanReplacesAnalystReview, setAnalystReviewNote, setAnalystReviewStatus, type AnalystReviewFilter, type AnalystReviewState, type AnalystReviewStatus } from '../features/scans/analystReview';
 import { createAnalystReviewMarkdown, downloadAnalystReviewMarkdown } from '../features/scans/analystReviewMarkdownExport';
@@ -385,7 +385,9 @@ export function App() {
       retainedReviewWorkspace.current = null;
       // Unknown on either side stays unknown; such a result is shown but never compared.
       const acceptedInstance = expectedInstance !== null && responseInstance === expectedInstance ? responseInstance : null;
-      const nextContext = { ...requestedContext, scanStatus: result.scan_status, receivedAt: new Date().toISOString(), serverInstanceId: acceptedInstance };
+      const nextContext = { ...requestedContext, scanStatus: result.scan_status, receivedAt: new Date().toISOString(), serverInstanceId: acceptedInstance,
+        // Investigation runs carry no token: their rule-bytes evidence lives in the investigation panel.
+        ruleContentToken: plainResponse?.ruleContentToken ?? null };
       const snapshot: ScanSnapshot = { scan: result, context: nextContext };
       setScan(result); setScanContext(nextContext);
       if (evidenceResponse) setCurrentEvidence({
@@ -978,7 +980,7 @@ function ScanComparisonPanel({
       {comparison.comparable && groups ? <details className="comparison-content">
         <summary>
           <span className="comparison-title-copy"><span className="eyebrow">현재 세션에서만 유지</span><h2 id="scan-comparison-title">검사 결과 비교</h2></span>
-          <span className="comparison-summary-counts">이번만 {groups.currentOnly.length} · 양쪽 {groups.shared.length} · 기준만 {groups.baselineOnly.length}</span>
+          <span className="comparison-summary-counts">이번만 {groups.currentOnly.length} · 양쪽 {groups.shared.length} · 기준만 {groups.baselineOnly.length}{baseline && current && ruleContentState(baseline.context, current.context) === 'different' ? ' · 규칙 내용 다름' : ''}</span>
         </summary>
         <div className="comparison-content-body">
           <div className="comparison-contexts">
@@ -986,6 +988,7 @@ function ScanComparisonPanel({
             <ComparisonContext label="현재 검사" snapshot={current}/>
           </div>
           <p className="comparison-limitation">Finding ID가 정확히 일치하는지만 비교합니다. 코드 이동이나 줄 번호·규칙 변경으로 분류가 달라질 수 있으며, 취약점의 신규 발생이나 해결을 확정하지 않습니다.</p>
+          {baseline && current && <p className="comparison-limitation comparison-rule-note" role="note">{ruleContentStatement(ruleContentState(baseline.context, current.context))}</p>}
           <div className="comparison-counts" aria-label="Finding 관찰 차이">
             {(Object.keys(comparisonCategoryLabels) as ComparisonCategory[]).map((key) => <div className={`comparison-count ${key}`} key={key}>
               <span>{comparisonCategoryLabels[key]}</span><strong>{groups[key].length}</strong>
