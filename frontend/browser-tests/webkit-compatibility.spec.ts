@@ -1,9 +1,10 @@
+import { evidencePath } from './evidence';
 import { expect, test } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
-const evidenceDir = resolve(process.cwd(), '../docs/assets/phase8g');
+const evidenceDir = evidencePath('phase8g');
 
 const finding = {
   finding_id: 'semgrep:0123456789abcdef01234567', rule_id: 'baseline.javascript-dynamic-eval', severity: 'high',

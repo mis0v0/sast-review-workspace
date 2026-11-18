@@ -1,3 +1,4 @@
+import { evidencePath } from './evidence';
 import { expect, test } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 
@@ -35,7 +36,7 @@ test('분석가 JSON 백업은 명시적으로 만들고 검증 후 Finding 단�
   await expect(page.getByLabel('선택한 Finding 상세')).toContainText('검토 대기');
   await expect(page.locator('img')).toHaveCount(0);
   await page.getByText('Finding별 기록 확인 (1)', { exact: true }).click();
-  await page.screenshot({ path: '../docs/assets/phase8e/restore-preview-1440.png', fullPage: true });
+  await page.screenshot({ path: evidencePath('phase8e/restore-preview-1440.png'), fullPage: true });
   await page.getByLabel('검토 기록 복원 미리보기').getByRole('button', { name: '이 기록 적용' }).click();
   await expect(page.getByLabel('수동 검토 상태')).toHaveValue('reviewed');
   await expect(page.getByLabel('분석가 메모')).toHaveValue('<img src=x onerror=alert(1)> imported note');

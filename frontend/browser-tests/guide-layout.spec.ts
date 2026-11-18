@@ -1,8 +1,9 @@
+import { evidencePath } from './evidence';
 import { expect, test } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
-const output = resolve(process.cwd(), '../docs/assets/ui-d4c-r/after');
+const output = evidencePath('ui-d4c-r/after');
 
 async function openGuide(page: import('@playwright/test').Page, width: number, height: number) {
   await page.setViewportSize({ width, height });

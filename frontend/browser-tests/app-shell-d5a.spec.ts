@@ -1,3 +1,4 @@
+import { evidencePath } from './evidence';
 import { expect, test } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -13,7 +14,7 @@ const scan = {
   issues: [], limitations: ['scan_result_is_not_safety_proof'],
   findings: [{ finding_id: 'semgrep:0123456789abcdef01234567', rule_id: 'synthetic.review-example', severity: 'high', verification_status: 'unverified', finding_kind: 'pattern', file_path: 'src/review.ts', line_number: 12, evidence_validation_status: 'validated', supported_claims: ['match_reported'], restricted_claims: [{ claim_type: 'vulnerability_confirmed', decision: 'unsupported_claim', reason_codes: ['independent_confirmation_required'] }], validation_error_code: null }],
 };
-const screenshots = resolve(process.cwd(), '../docs/assets/ui-d5a');
+const screenshots = evidencePath('ui-d5a');
 
 test('D5A desktop shell removes full-width header and moves brand into top-aligned sidebar', async ({ page }) => {
   await page.route('**/api/v1/health', (route) => route.fulfill({ json: { status: 'ok', service: 'ai-code-security-analyzer' } }));

@@ -1,6 +1,6 @@
+import { evidencePath } from './evidence';
 import { expect, test } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
-import { resolve } from 'node:path';
 
 const scanResponse = {
   scan_status: 'completed', completed: true, semgrep_version: '1.182.1', finding_count: 2,
@@ -60,11 +60,11 @@ test('UI-D2 start screen follows Option B control rhythm and keeps required typo
   expect(Number.parseFloat(sizes.select.fontSize)).toBeGreaterThanOrEqual(18);
   expect(Number.parseFloat(sizes.button.fontSize)).toBeGreaterThanOrEqual(18);
   expect(sizes.select.height).toBeGreaterThanOrEqual(56);
-  await mkdir(resolve(process.cwd(), '../docs/assets/ui-d2'), { recursive: true });
+  await mkdir(evidencePath('ui-d2'), { recursive: true });
   await page.evaluate(() => window.scrollTo(0, 0));
-  await page.screenshot({ path: resolve(process.cwd(), '../docs/assets/ui-d2/start-1440x900.png'), clip: { x: 0, y: 0, width: 1440, height: 900 } });
+  await page.screenshot({ path: evidencePath('ui-d2/start-1440x900.png'), clip: { x: 0, y: 0, width: 1440, height: 900 } });
   await page.setViewportSize({ width: 1920, height: 1080 });
-  await page.screenshot({ path: resolve(process.cwd(), '../docs/assets/ui-d2/start-1920x1080.png'), clip: { x: 0, y: 0, width: 1920, height: 1080 } });
+  await page.screenshot({ path: evidencePath('ui-d2/start-1920x1080.png'), clip: { x: 0, y: 0, width: 1920, height: 1080 } });
   for (const viewport of [{ width: 1280, height: 800 }, { width: 768, height: 1024 }, { width: 390, height: 844 }]) {
     await page.setViewportSize(viewport);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
@@ -73,11 +73,11 @@ test('UI-D2 start screen follows Option B control rhythm and keeps required typo
   await page.setViewportSize({ width: 390, height: 844 });
   await page.evaluate(() => window.scrollTo(0, 0));
   await expect.poll(() => page.locator('.workspace-sidebar').evaluate((element) => element.getBoundingClientRect().right)).toBeLessThan(0);
-  await page.screenshot({ path: resolve(process.cwd(), '../docs/assets/ui-d2/start-390x844.png'), clip: { x: 0, y: 0, width: 390, height: 844 } });
+  await page.screenshot({ path: evidencePath('ui-d2/start-390x844.png'), clip: { x: 0, y: 0, width: 390, height: 844 } });
   await page.getByRole('button', { name: '내비게이션 열기' }).click();
   await expect(page.getByRole('dialog', { name: '주 메뉴' })).toBeVisible();
   await expect.poll(() => page.locator('.workspace-sidebar').evaluate((element) => element.getBoundingClientRect().left)).toBe(0);
-  await page.screenshot({ path: resolve(process.cwd(), '../docs/assets/ui-d2/mobile-menu-390x844.png'), clip: { x: 0, y: 0, width: 390, height: 844 } });
+  await page.screenshot({ path: evidencePath('ui-d2/mobile-menu-390x844.png'), clip: { x: 0, y: 0, width: 390, height: 844 } });
   await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: '내비게이션 열기' })).toBeFocused();
   await page.getByRole('button', { name: '내비게이션 열기' }).click();
@@ -85,7 +85,7 @@ test('UI-D2 start screen follows Option B control rhythm and keeps required typo
   await expect(page.getByRole('heading', { name: '검사 방법' })).toBeVisible();
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.evaluate(() => window.scrollTo(0, 0));
-  await page.screenshot({ path: resolve(process.cwd(), '../docs/assets/ui-d2/guide-1440x900.png'), clip: { x: 0, y: 0, width: 1440, height: 900 } });
+  await page.screenshot({ path: evidencePath('ui-d2/guide-1440x900.png'), clip: { x: 0, y: 0, width: 1440, height: 900 } });
 });
 
 test('UI-D2 result review remains grounded in API data and fits required desktop and mobile widths', async ({ page }) => {
@@ -95,7 +95,7 @@ test('UI-D2 result review remains grounded in API data and fits required desktop
   await page.getByRole('button', { name: /검사 결과/ }).click();
   await expect(page.getByRole('heading', { name: '아직 검사 결과가 없습니다.' })).toBeVisible();
   await page.evaluate(() => window.scrollTo(0, 0));
-  await page.screenshot({ path: resolve(process.cwd(), '../docs/assets/ui-d2/empty-results-1440x900.png'), clip: { x: 0, y: 0, width: 1440, height: 900 } });
+  await page.screenshot({ path: evidencePath('ui-d2/empty-results-1440x900.png'), clip: { x: 0, y: 0, width: 1440, height: 900 } });
   await page.getByRole('navigation', { name: '화면 이동' }).getByRole('button', { name: '검사 시작' }).click();
   await page.getByLabel('로컬 API 토큰').fill('synthetic-ui-d2-token');
   await page.getByRole('button', { name: '검사 실행' }).click();
@@ -107,7 +107,7 @@ test('UI-D2 result review remains grounded in API data and fits required desktop
   await expect(page.getByLabel('Finding 목록')).toContainText('Notice.tsx');
   await expect(page.getByLabel('Finding 목록')).not.toContainText('review.js');
   await page.getByLabel('선택한 Finding 상세').scrollIntoViewIfNeeded();
-  await page.screenshot({ path: resolve(process.cwd(), '../docs/assets/ui-d2/finding-detail-1440x900.png'), clip: { x: 0, y: 0, width: 1440, height: 900 } });
+  await page.screenshot({ path: evidencePath('ui-d2/finding-detail-1440x900.png'), clip: { x: 0, y: 0, width: 1440, height: 900 } });
   await page.getByRole('searchbox', { name: '검색' }).clear();
   const titleSize = await page.locator('.workspace-title h1').evaluate((element) => getComputedStyle(element).fontSize);
   const rowSize = await page.locator('.finding-row .row-main-heading > strong').first().evaluate((element) => getComputedStyle(element).fontSize);
@@ -121,11 +121,11 @@ test('UI-D2 result review remains grounded in API data and fits required desktop
     return [selector, { top: Math.round(rect.top + scrollY), height: Math.round(rect.height), minHeight: style.minHeight, display: style.display }];
   })));
   console.log('[UI-D2 result bounding boxes]', JSON.stringify(resultBoxes));
-  await mkdir(resolve(process.cwd(), '../docs/assets/ui-d2'), { recursive: true });
+  await mkdir(evidencePath('ui-d2'), { recursive: true });
   await page.evaluate(() => window.scrollTo(0, 0));
-  await page.screenshot({ path: resolve(process.cwd(), '../docs/assets/ui-d2/results-1440x900.png'), clip: { x: 0, y: 0, width: 1440, height: 900 } });
+  await page.screenshot({ path: evidencePath('ui-d2/results-1440x900.png'), clip: { x: 0, y: 0, width: 1440, height: 900 } });
   await page.setViewportSize({ width: 1920, height: 1080 });
-  await page.screenshot({ path: resolve(process.cwd(), '../docs/assets/ui-d2/results-1920x1080.png'), clip: { x: 0, y: 0, width: 1920, height: 1080 } });
+  await page.screenshot({ path: evidencePath('ui-d2/results-1920x1080.png'), clip: { x: 0, y: 0, width: 1920, height: 1080 } });
   for (const viewport of [{ width: 1280, height: 800 }, { width: 768, height: 1024 }, { width: 390, height: 844 }]) {
     await page.setViewportSize(viewport);
     if (viewport.width === 390) await expect.poll(() => page.locator('.workspace-sidebar').evaluate((element) => element.getBoundingClientRect().right)).toBeLessThan(0);
@@ -133,12 +133,12 @@ test('UI-D2 result review remains grounded in API data and fits required desktop
     expect(overflow, `horizontal overflow at ${viewport.width}px`).toBeLessThanOrEqual(0);
     if (viewport.width === 1280 || viewport.width === 768) {
       await page.evaluate(() => window.scrollTo(0, 0));
-      await page.screenshot({ path: resolve(process.cwd(), `../docs/assets/ui-d2/results-${viewport.width}x${viewport.height}.png`), clip: { x: 0, y: 0, width: viewport.width, height: viewport.height } });
+      await page.screenshot({ path: evidencePath(`ui-d2/results-${viewport.width}x${viewport.height}.png`), clip: { x: 0, y: 0, width: viewport.width, height: viewport.height } });
     }
   }
   await page.setViewportSize({ width: 390, height: 844 });
   await page.evaluate(() => window.scrollTo(0, 0));
-  await page.screenshot({ path: resolve(process.cwd(), '../docs/assets/ui-d2/results-390x844.png'), clip: { x: 0, y: 0, width: 390, height: 844 } });
+  await page.screenshot({ path: evidencePath('ui-d2/results-390x844.png'), clip: { x: 0, y: 0, width: 390, height: 844 } });
 });
 
 test('UI-D2 displays the real API bootstrap failure instead of a synthetic connected state', async ({ page }) => {
@@ -147,6 +147,6 @@ test('UI-D2 displays the real API bootstrap failure instead of a synthetic conne
   await page.goto('/');
   await expect(page.getByRole('alert')).toContainText('로컬 API에 연결할 수 없습니다');
   await expect(page.getByRole('button', { name: '다시 연결' })).toBeVisible();
-  await mkdir(resolve(process.cwd(), '../docs/assets/ui-d2'), { recursive: true });
-  await page.screenshot({ path: resolve(process.cwd(), '../docs/assets/ui-d2/api-error-1440x900.png'), clip: { x: 0, y: 0, width: 1440, height: 900 } });
+  await mkdir(evidencePath('ui-d2'), { recursive: true });
+  await page.screenshot({ path: evidencePath('ui-d2/api-error-1440x900.png'), clip: { x: 0, y: 0, width: 1440, height: 900 } });
 });

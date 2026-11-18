@@ -1,8 +1,9 @@
+import { evidencePath } from './evidence';
 import { expect, test } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
-const output = resolve(process.cwd(), '../docs/assets/ui-d4b/after');
+const output = evidencePath('ui-d4b/after');
 const finding = {
   finding_id: 'semgrep:0123456789abcdef01234567', rule_id: 'synthetic.eval-example', severity: 'high',
   verification_status: 'unverified', finding_kind: 'pattern', file_path: 'src/routes/review.js', line_number: 12,

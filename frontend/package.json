@@ -18,6 +18,9 @@
     "test:qa:investigation:safari": "node --test scripts/investigation-safari-qa.test.mjs",
     "test:qa:safari": "node --test scripts/safari-manual-qa.test.mjs",
     "test:e2e:real": "node scripts/run-real-semgrep-e2e.mjs",
+    "test:evidence": "node --test scripts/browser-evidence.test.mjs",
+    "evidence:capture": "npm run build && node scripts/capture-browser-evidence.mjs -- npm run test:browser",
+    "evidence:capture:real": "npm run build && node scripts/capture-browser-evidence.mjs -- npm run test:e2e:real",
     "build": "tsc -b && vite build",
     "preview": "vite preview"
   },

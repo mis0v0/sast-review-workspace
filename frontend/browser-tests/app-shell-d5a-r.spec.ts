@@ -1,8 +1,9 @@
+import { evidencePath } from './evidence';
 import { expect, test } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
-const assets = resolve(process.cwd(), '../docs/assets/ui-d5a-r');
+const assets = evidencePath('ui-d5a-r');
 
 test('D5A-R page headers stack and align with content at narrower viewports', async ({ page }) => {
   await page.route('**/api/v1/health', (route) => route.fulfill({ json: { status: 'ok', service: 'ai-code-security-analyzer' } }));

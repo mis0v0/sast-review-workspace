@@ -1,3 +1,4 @@
+import { evidencePath } from './evidence';
 import { expect, test } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -26,7 +27,7 @@ async function apiFixture(page: import('@playwright/test').Page, scanResponse = 
   await page.route('**/api/v1/scans', (route) => route.fulfill({ json: scanResponse }));
 }
 
-const shots = resolve(process.cwd(), '../docs/assets/ui-d3');
+const shots = evidencePath('ui-d3');
 async function capture(page: import('@playwright/test').Page, name: string) {
   await mkdir(shots, { recursive: true });
   await page.evaluate(() => window.scrollTo(0, 0));

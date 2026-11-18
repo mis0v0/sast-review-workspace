@@ -1,3 +1,4 @@
+import { evidencePath } from './evidence';
 import { expect, test } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -178,7 +179,7 @@ test('cyberpunk workspace stays usable without horizontal overflow across deskto
     expect(presentation.detailCopySize).toBeGreaterThanOrEqual(16);
     expect(presentation.firstRowTop).toBeLessThan(await documentHeight(page));
   }
-  await writeFile(resolve(process.cwd(), '../docs/assets/ui-large-type-readability-36-9d/readability-audit/responsive-result-metrics.json'), JSON.stringify(viewportMetrics, null, 2));
+  await writeFile(evidencePath('ui-large-type-readability-36-9d/readability-audit/responsive-result-metrics.json'), JSON.stringify(viewportMetrics, null, 2));
 
   await page.getByRole('searchbox', { name: '검색' }).fill('synthetic.html-example');
   await expect(page.getByLabel('Finding 목록').getByRole('button')).toHaveCount(1);
@@ -191,7 +192,7 @@ async function documentHeight(page: import('@playwright/test').Page): Promise<nu
 }
 
 test('large-type scale remains readable across workspace pages and target viewports', async ({ page }) => {
-  const output = resolve(process.cwd(), '../docs/assets/ui-large-type-readability-36-9d/readability-audit');
+  const output = evidencePath('ui-large-type-readability-36-9d/readability-audit');
   await mkdir(output, { recursive: true });
   await page.route('**/api/v1/health', (route) => route.fulfill({ json: { status: 'ok', service: 'ai-code-security-analyzer' } }));
   await page.route('**/api/v1/options', (route) => route.fulfill({ json: {
@@ -341,7 +342,7 @@ test('large-type scale remains readable across workspace pages and target viewpo
 });
 
 test('captures cyberpunk HUD launch, review, filtered, partial, and error states using synthetic data', async ({ page }) => {
-  const output = resolve(process.cwd(), '../docs/assets/ui-large-type-readability-36-9d/regression-captures');
+  const output = evidencePath('ui-large-type-readability-36-9d/regression-captures');
   await mkdir(output, { recursive: true });
   const token = 'phase-36-9b-synthetic-visual-token';
   const completed = {
@@ -456,7 +457,7 @@ test('captures cyberpunk HUD launch, review, filtered, partial, and error states
 });
 
 test('sidebar navigation separates start, current-session results, and guidance and supports the mobile drawer', async ({ page }) => {
-  const output = resolve(process.cwd(), '../docs/assets/ui-large-type-readability-36-9d/navigation-audit');
+  const output = evidencePath('ui-large-type-readability-36-9d/navigation-audit');
   await mkdir(output, { recursive: true });
   await page.route('**/api/v1/health', (route) => route.fulfill({ json: { status: 'ok', service: 'ai-code-security-analyzer' } }));
   await page.route('**/api/v1/options', (route) => route.fulfill({ json: {

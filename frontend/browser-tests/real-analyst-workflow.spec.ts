@@ -1,3 +1,4 @@
+import { evidencePath } from './evidence';
 import { expect, test } from '@playwright/test';
 import { readFile, realpath, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, sep } from 'node:path';
@@ -409,7 +410,7 @@ test('실제 FastAPI·Semgrep에서 분석가 검토·백업·비교 전체 업�
     expect(dimensions.scroll, `horizontal overflow at ${width}px`).toBeLessThanOrEqual(dimensions.client);
   }
   await page.setViewportSize({ width: 1440, height: 900 });
-  const screenshots = join(process.cwd(), '../docs/assets/phase8f');
+  const screenshots = evidencePath('phase8f');
   const { mkdir } = await import('node:fs/promises');
   await mkdir(screenshots, { recursive: true });
   await page.screenshot({ path: join(screenshots, 'workflow-review-1440.png'), fullPage: true });

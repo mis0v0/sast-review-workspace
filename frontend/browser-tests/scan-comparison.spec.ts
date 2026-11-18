@@ -1,3 +1,4 @@
+import { evidencePath } from './evidence';
 import { expect, test } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 import { readFile } from 'node:fs/promises';
@@ -75,7 +76,7 @@ test('baseline comparison can be saved, compared, and read without narrow-screen
   await expect(page.getByRole('searchbox', { name: '검색' })).toHaveValue('');
   await expect(page.getByRole('region', { name: '선택한 Finding 상세' })).toContainText('src/cccccccccccccccccccccccc.js:9');
 
-  const screenshotDir = resolve(process.cwd(), '../docs/assets/phase8l');
+  const screenshotDir = evidencePath('phase8l');
   await mkdir(screenshotDir, { recursive: true });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.screenshot({ path: resolve(screenshotDir, 'followup-current-only-1440.png'), fullPage: true });

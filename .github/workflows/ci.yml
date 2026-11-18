@@ -187,6 +187,7 @@ jobs:
         run: |
           npm run typecheck
           npm test
+          npm run test:evidence
           npm run build
 
       - name: Install Chromium for browser smoke test
@@ -204,3 +205,11 @@ jobs:
           SEMGREP_SEND_METRICS: 'off'
           SEMGREP_ENABLE_VERSION_CHECK: '0'
         run: npm run test:e2e:real
+
+      - name: Require browser tests to leave committed evidence untouched
+        run: |
+          changes="$(git status --porcelain --untracked-files=all -- docs/assets)"
+          if [ -n "$changes" ]; then
+            printf 'Browser tests changed committed evidence:\n%s\n' "$changes"
+            exit 1
+          fi
