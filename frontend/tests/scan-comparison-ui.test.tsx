@@ -85,9 +85,9 @@ describe('검사 결과 비교 UI', () => {
   });
 
   it.each([
-    ['A'.repeat(22), 'B'.repeat(22), true, '같은 규칙 프로필이지만 두 검사에 사용된 규칙 파일의 내용이 다릅니다'],
-    ['A'.repeat(22), 'A'.repeat(22), false, '바이트가 같은 규칙 파일로 실행됐습니다'],
-    [null, 'A'.repeat(22), false, '규칙 파일 내용이 같은지 확인할 수 없습니다'],
+    ['A'.repeat(22), 'B'.repeat(22), true, '같은 규칙 프로필이지만 두 검사에서 각 검사의 실행 직전과 직후에 확인한 선택 규칙 파일의 바이트가 다릅니다'],
+    ['A'.repeat(22), 'A'.repeat(22), false, '두 검사에서 각 검사의 실행 직전과 직후에 확인한 선택 규칙 파일의 바이트가 모두 같습니다'],
+    [null, 'A'.repeat(22), false, '선택 규칙 파일 바이트가 같은지 확인할 수 없습니다'],
   ])('규칙 내용 토큰 %s → %s 를 비교에 진술하고 비교는 막지 않는다', async (before, after, flagged, statement) => {
     const withToken = (body: ScanResponse, token: string | null) => new Response(JSON.stringify(body), { status: 200, headers: {
       'Content-Type': 'application/json', 'X-Server-Instance': 'test-server-instance-01', ...(token ? { 'X-Rule-Content-Token': token } : {}),

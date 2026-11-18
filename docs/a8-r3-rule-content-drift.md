@@ -29,9 +29,26 @@ The dashboard keeps the token in the scan context alongside `serverInstanceId`. 
 
 | State | When | Statement (panel and export) |
 | --- | --- | --- |
-| `same` | Both tokens valid and equal | Same rule bytes. There is no evidence that a rule change caused the difference, and this is not evidence of a fix. |
-| `different` | Both valid, not equal | The rule content differs under the same profile. The difference may come from the rule change rather than the code, and this comparison cannot separate the two. Rescan both with the same rules to see code changes. The summary line shows "규칙 내용 다름" (rule content differs). |
-| `unknown` | Either side missing or malformed | Rule equality cannot be determined. A rule change may be the cause. |
+| `same` | Both tokens valid and equal | The selected rule file's bytes, checked immediately before and after each run, are the same in both scans. There is no evidence that a rule change caused the difference. This does not prove that Semgrep loaded the same rules or detected the same way, and it is not evidence of a fix. |
+| `different` | Both valid, not equal | Those bytes differ under the same profile, and even a comment-only edit changes them. The difference may come from the rule change rather than the code, and this comparison cannot separate the two. Rescan both with the same rules to see code changes. The summary line shows "규칙 내용 다름" (rule content differs). |
+| `unknown` | Either side missing or malformed | Equality cannot be determined, and the statement lists why a result may lack the check: an investigation run, an edit during the run, an unreadable file, the server's limit, or a server without this feature. A rule change may be the cause. |
+
+### ER-D6 compliance
+
+ER-D6 (`docs/er-d6-public-projection-decision.md`) sets four relevant requirements:
+- item 2: no digest in the API, logs or exports;
+- item 4: a public form of digest-free closed states that state when they were collected and what a failure means;
+- item 5: `loaded_rule_identity_unverified` stays;
+- status: a public projection needs a design and compatibility gate.
+
+ER-D7 implemented that projection for opt-in investigation sessions only, with server-computed states, and left normal v1 scans unchanged (`docs/er-d7-rule-evidence-integration.md`).
+
+This change is a second, narrower projection for v1:
+- **No digest anywhere.** The token is 128 random bits and not derived from content, so it cannot be used to confirm a known rule file offline.
+- **Equality only.** It reveals only whether two scans in one server process used equal bytes. Any client-side same-or-different decision needs that much. Beyond ER-D7's pairwise answer it reveals only grouping into equal classes, which the same authenticated user could obtain pair by pair.
+- **Limited reach.** It is returned only to authenticated `POST /api/v1/scans` requests that pass the Host and Origin allowlists. It is kept only in tab memory, never exported, backed up, stored or logged, and it ends with the process.
+- **Closed states only.** The dashboard shows `same`, `different` or `unknown`. Each statement says when the bytes were observed, and `unknown` says what a missing check means. No statement claims loaded-rule identity, equal detection or remediation.
+- **Unchanged contracts.** Manifest v1, Evaluation v1, `investigation-scan/v1` and ER-D7's `rule-bytes-comparison/v1` are untouched, and investigation runs keep their own rule-bytes evidence.
 
 Comparison eligibility is unchanged. The export records only the label (같음 / 다름 / 확인 불가) and the statement.
 

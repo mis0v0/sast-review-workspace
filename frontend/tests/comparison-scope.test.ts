@@ -76,11 +76,17 @@ describe('비교 규칙 파일 내용 진술', () => {
   });
 
   it('같은 규칙도 수정의 증거로, 다른 규칙도 확정 원인으로 말하지 않는다', () => {
+    // ER-D6 item 4: when the state was observed, and what a failure means.
+    for (const state of ['same', 'different'] as const) expect(ruleContentStatement(state)).toContain('실행 직전과 직후에 확인한 선택 규칙 파일의 바이트');
     expect(ruleContentStatement('same')).toContain('규칙 파일 변경을 Finding 차이의 원인으로 볼 근거는 없지만');
-    expect(ruleContentStatement('same')).toContain('코드 수정이나 취약점 해결의 증거는 아닙니다');
+    // Equal bytes are not loaded-rule identity, equal detection, or remediation.
+    expect(ruleContentStatement('same')).toContain('Semgrep이 실제로 로드한 규칙이나 탐지 동작이 같다는 증명은 아니며');
+    expect(ruleContentStatement('same')).toContain('코드 수정이나 취약점 해결의 증거도 아닙니다');
+    expect(ruleContentStatement('same')).not.toMatch(/실행됐습니다|로드했습니다|동일하게 탐지/);
     expect(ruleContentStatement('different')).toContain('규칙 변경 때문일 수 있으며');
     expect(ruleContentStatement('different')).toContain('같은 규칙으로 두 검사를 다시 실행');
     expect(ruleContentStatement('unknown')).toContain('확인할 수 없습니다');
+    expect(ruleContentStatement('unknown')).toContain('조사 모드 검사였거나, 검사 중 규칙 파일이 바뀌었거나');
     for (const state of ['same', 'different', 'unknown'] as const) {
       expect(ruleContentStatement(state)).not.toMatch(/해결됐|해결되었|수정됐|수정되었|수정 완료|해결 완료/);
     }

@@ -59,7 +59,7 @@ describe('검사 비교 Markdown 보고서', () => {
       snapshot([], {}, { receivedAt: '2026-11-01T01:00:00.000Z', ruleContentToken: after }),
     );
     expect(report).toContain('- 규칙 파일 내용: 다름');
-    expect(report).toContain('- 규칙 파일: 같은 규칙 프로필이지만 두 검사에 사용된 규칙 파일의 내용이 다릅니다');
+    expect(report).toContain('- 규칙 파일: 같은 규칙 프로필이지만 두 검사에서 각 검사의 실행 직전과 직후에 확인한 선택 규칙 파일의 바이트가 다릅니다');
     expect(report).not.toContain(before);
     expect(report).not.toContain(after);
     const unknown = createComparisonMarkdown(snapshot([finding('03')]), snapshot([], {}, { receivedAt: '2026-11-01T02:00:00.000Z' }));

@@ -310,8 +310,10 @@ class ScanService:
         """``_scan_with_manifest`` plus the rule file digest bracketing the Semgrep run.
 
         Semgrep reads the rule file itself, so the file is hashed immediately before
-        and after the run. Only identical digests describe the rules that were
-        loaded; a change during the run, or an unreadable file, yields ``None``.
+        and after the run, and only identical digests are kept. This observes the
+        selected file's bytes at those two moments; it does not prove which rules
+        Semgrep loaded (an edit reverted within the run is not seen). A change
+        during the run, or an unreadable file, yields ``None``.
         """
         registered = next((item for item in self.settings.registered_targets if item.target_id == target_id), None)
         if registered is None:

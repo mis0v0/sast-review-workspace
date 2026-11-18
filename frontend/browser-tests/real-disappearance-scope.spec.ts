@@ -45,7 +45,7 @@ test('real comparison states the current scan exclusions next to findings that d
   await page.getByText('검사 결과 비교').click();
   // Same server, same rule file bytes for both scans: the real header lets the comparison say so.
   const comparison = page.getByRole('region', { name: '검사 결과 비교' });
-  await expect(comparison.getByRole('note').filter({ hasText: '바이트가 같은 규칙 파일로 실행됐습니다' })).toHaveCount(1);
+  await expect(comparison.getByRole('note').filter({ hasText: '선택 규칙 파일의 바이트가 모두 같습니다' })).toHaveCount(1);
   await expect(page.getByText(/이번만 1 · 양쪽 0 · 기준만 2$/)).toBeVisible();
   const categories = page.getByRole('group', { name: '비교 항목 범주' });
   await categories.getByRole('button', { name: /기준 검사에서만 관찰/ }).click();
@@ -85,7 +85,7 @@ test('real comparison states the current scan exclusions next to findings that d
     await expect(page.getByText(/이번만 0 · 양쪽 0 · 기준만 2 · 규칙 내용 다름/)).toBeVisible();
     const details = comparison.locator('details.comparison-content');
     if (!await details.evaluate((element) => (element as HTMLDetailsElement).open)) await page.getByText('검사 결과 비교').click();
-    await expect(comparison.getByRole('note').filter({ hasText: '같은 규칙 프로필이지만 두 검사에 사용된 규칙 파일의 내용이 다릅니다' })).toHaveCount(1);
+    await expect(comparison.getByRole('note').filter({ hasText: '선택 규칙 파일의 바이트가 다릅니다' })).toHaveCount(1);
     const driftMarkdown = await download(page);
     expect(driftMarkdown).toContain('- 규칙 파일 내용: 다름');
     // The report's own disclaimer negates these phrases; only the statements this comparison derives are checked.
