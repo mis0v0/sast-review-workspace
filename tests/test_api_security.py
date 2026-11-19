@@ -335,6 +335,18 @@ def test_rejected_header_matrix_never_calls_scan_service(tmp_path: Path) -> None
         duplicate_token = client.post("/api/v1/scans", headers=[("host", "testserver"), ("x-local-api-token", TOKEN), ("x-local-api-token", TOKEN), ("content-type", "application/json")], content=payload)
         duplicate_type = client.post("/api/v1/scans", headers=[("host", "testserver"), ("x-local-api-token", TOKEN), ("content-type", "application/json"), ("content-type", "text/plain")], content=payload)
         duplicate_length = client.post("/api/v1/scans", headers=[("host", "testserver"), ("x-local-api-token", TOKEN), ("content-type", "application/json"), ("content-length", str(len(payload))), ("content-length", str(len(payload)))], content=payload)
+        # Near misses: only the exact token authenticates, and an allowed host name carrying userinfo is not
+        # the allowed host. Each request is otherwise valid, so it would reach the recorder if accepted.
+        near_misses = [
+            client.post("/api/v1/scans", headers={"X-Local-API-Token": token, "Content-Type": "application/json"}, content=payload)
+            for token in (TOKEN[:-1], TOKEN[:1], TOKEN + "t", TOKEN[:-1] + "u")
+        ] + [
+            client.post("/api/v1/scans", headers={"Host": host, "X-Local-API-Token": TOKEN, "Content-Type": "application/json"}, content=payload)
+            for host in ("user@testserver", "user:pass@testserver")
+        ]
+    assert [(response.status_code, response.json()) for response in near_misses] == (
+        [(401, {"error": "unauthorized"})] * 4 + [(400, {"error": "host_not_allowed"})] * 2
+    )
     assert [response.status_code for response in cases] == [401, 403, 403, 400]
     assert all(response.status_code == 400 for response in [duplicate_header, duplicate_origin, duplicate_token, duplicate_type, duplicate_length])
     assert all("x" * 257 not in response.text and "secret" not in response.text for response in cases)
