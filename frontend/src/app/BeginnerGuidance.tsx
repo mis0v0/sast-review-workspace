@@ -1,4 +1,5 @@
-import type { ScanResponse } from '../api/types';
+import type { ApiFinding, ScanResponse } from '../api/types';
+import { getFindingReviewGuidance } from '../features/scans/reviewGuidance';
 
 type HelpText = { title: string; description: string; nextStep: string };
 
@@ -104,4 +105,23 @@ export function ScanStatusGuidance({ scan }: { scan: ScanResponse }) {
       })}</div>
     </details>}
   </>;
+}
+
+/**
+ * Plain-language next steps for one finding. Each part says how far it is supported:
+ * the match is what Semgrep reported, the impact is conditional, the fix is a suggestion,
+ * and a later disappearance is not presented as proof of a fix.
+ */
+export function BeginnerFindingSummary({ finding, label = '이 항목에서 할 일' }: { finding: ApiFinding; label?: string }) {
+  const guidance = getFindingReviewGuidance(finding.rule_id, finding.finding_kind);
+  return <section className="beginner-finding-summary" aria-label={label}>
+    <h3>이 항목에서 할 일</h3>
+    <dl>
+      <div><dt>탐지된 내용 <span className="evidence-tag observed">검사 도구가 보고함</span></dt><dd>{guidance.finding} 위치는 위의 ‘확인할 파일과 위치’입니다.</dd></div>
+      <div><dt>가능한 영향 <span className="evidence-tag conditional">조건부 · 확인 안 됨</span></dt><dd>{guidance.impact}</dd></div>
+      <div><dt>권장 수정 방향 <span className="evidence-tag suggestion">제안</span></dt><dd><ul>{guidance.actions.map((action) => <li key={action}>{action}</li>)}</ul></dd></div>
+      <div><dt>아직 확인되지 않은 것</dt><dd>외부 입력이 이 위치에 실제로 도달하는지, 이 코드가 실제로 실행되는지, 수정 방법이 앱 동작에 맞는지는 이 검사로 확인되지 않았습니다.</dd></div>
+      <div><dt>수정한 뒤</dt><dd>같은 규칙 모음으로 다시 검사하세요. 이 항목이 더 이상 보이지 않아도 수정이 확인된 것은 아닙니다. 규칙은 특정 코드 형태만 찾으므로, 고친 코드와 같은 값을 다루는 다른 위치를 직접 확인하고 앱의 기존 기능이 그대로 동작하는지도 확인하세요.</dd></div>
+    </dl>
+  </section>;
 }

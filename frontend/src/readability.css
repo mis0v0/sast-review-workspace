@@ -379,3 +379,14 @@ select option { font-size: 1.125rem; }
   #main-content .guide-workspace .glossary-limit,
   #main-content .guide-limit p { font-size: 1.0625rem; }
 }
+
+/* UX-P0: beginner next steps for one finding; the tags state how far each part is supported. */
+.beginner-finding-summary { display: grid; gap: .75rem; padding: 1rem 1.25rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.beginner-finding-summary h3 { margin: 0; font-size: 1.125rem; }
+.beginner-finding-summary dl { display: grid; gap: .75rem; margin: 0; }
+.beginner-finding-summary dt { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; font-weight: 700; color: var(--text); }
+.beginner-finding-summary dd { margin: .25rem 0 0; color: var(--muted); line-height: 1.6; overflow-wrap: anywhere; }
+.beginner-finding-summary ul { margin: 0; padding-left: 1.25rem; }
+.beginner-finding-summary .evidence-tag { padding: .125rem .5rem; border: 1px solid var(--border-strong); border-radius: 999px; font-size: .875rem; font-weight: 500; color: var(--text); }
+.beginner-finding-summary .evidence-tag.observed { border-color: var(--success-line); background: var(--success-soft); }
+.beginner-finding-summary .evidence-tag.conditional { border-color: var(--warning-line); background: var(--warning-soft); }
