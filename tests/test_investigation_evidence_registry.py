@@ -459,6 +459,29 @@ def test_expiry_during_evaluation_discards_result() -> None:
     assert error.value.code is RegistryErrorCode.EVIDENCE_UNAVAILABLE
 
 
+@pytest.mark.parametrize("clock_at_hook,expired", [(9.0, False), (10.0, True)])
+def test_expiry_during_rule_bytes_evaluation_discards_result(clock_at_hook: float, expired: bool) -> None:
+    """The evaluation runs outside the lock; evidence that expires meanwhile must not yield a result."""
+    now = [0.0]
+    registry = RunEvidenceRegistry(
+        clock=lambda: now[0], run_ttl_seconds=10, session_ttl_seconds=10,
+        evaluation_hook=lambda: now.__setitem__(0, clock_at_hook),
+    )
+    runs = [bundle(finding(char), invocation=RULE_BYTES_INVOCATION_ID) for char in "ab"]
+    handles = [registry.register_rule_bytes_run(run.response, run.manifest, RuleBytesObservation(
+        RULE_BYTES_OBSERVATION_VERSION, run.manifest.scan_ref, run.manifest.target_id,
+        run.manifest.rule_profile_id, RULE_BYTES_INVOCATION_ID, run.manifest.semgrep_version, b"a" * 32,
+    )) for run in runs]
+    session = registry.create_session(*handles)
+    if not expired:
+        # Positive control: the same evaluation, finishing just before expiry, returns its result.
+        assert registry.evaluate_rule_bytes(session).status is RuleBytesComparison.SAME_SELECTED_BYTES
+        return
+    with pytest.raises(EvidenceRegistryError) as error:
+        registry.evaluate_rule_bytes(session)
+    assert error.value.code is RegistryErrorCode.EVIDENCE_UNAVAILABLE
+
+
 def test_handle_collision_never_overwrites_existing_record() -> None:
     constant = "A" * 43
     values = iter([constant, constant, constant, constant])
