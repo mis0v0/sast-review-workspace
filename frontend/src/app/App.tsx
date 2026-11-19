@@ -17,7 +17,7 @@ import { createCodeScanningPreflight, type CodeScanningPreflight } from '../feat
 import { canInvestigateBlockedPartialComparison, validateInvestigationContext, validateInvestigationRuns, type EvidenceBackedScan } from '../features/scans/investigationWorkflow';
 import { createEvidenceGapMap, type EvidenceGapMap } from '../features/scans/evidenceGapMap';
 import { investigationAssessmentLabels, investigationErrorMessage, investigationLimitationLabels, investigationPathLabels } from '../features/scans/investigationMessages';
-import { QuickStart, ScanStatusGuidance, SecurityGlossary, ServerAdminSettings } from './BeginnerGuidance';
+import { BeginnerFindingSummary, QuickStart, ScanStatusGuidance, SecurityGlossary, ServerAdminSettings } from './BeginnerGuidance';
 
 type RequestState = 'ready' | 'scanning' | 'completed' | 'partial' | 'failed' | 'unauthorized' | 'scan_already_running' | 'connection_error';
 type WorkspaceView = 'start' | 'results' | 'guide';
@@ -875,6 +875,7 @@ function FindingDetail({finding,triage,triageLabel='분석가 검토 가이드',
     <div className="detail-badges"><span>{kindLabels[finding.finding_kind]}</span><span className="unverified-badge">미검증 후보</span></div>
     <div className="detail-location"><span>확인할 파일과 위치</span><strong>{finding.file_path ?? '파일 경로를 확인할 수 없습니다'}{finding.line_number ? `:${finding.line_number}` : ''}</strong><small>이 위치는 규칙이 보고한 매치입니다. 실제 입력 위치나 위험한 함수의 인자 위치와 같다고 확인된 것은 아닙니다.</small></div>
     {reviewEntry && onStatusChange && onNoteChange && <section className="analyst-review-editor" aria-labelledby="analyst-review-editor-title"><h3 id="analyst-review-editor-title">분석가 검토</h3>{importedFromBackup && <p className="backup-origin-note" role="status">외부 백업에서 가져온 기록입니다. 현재 코드에 대한 보안 판정은 아닙니다.</p>}<label>수동 검토 상태<select aria-label="수동 검토 상태" value={reviewEntry.status} onChange={(event) => onStatusChange(event.target.value as AnalystReviewStatus)}><option value="pending">검토 대기</option><option value="needs_followup">추가 확인 필요</option><option value="reviewed">검토 완료</option></select></label><label htmlFor="analyst-note">분석가 메모<textarea id="analyst-note" aria-label="분석가 메모" aria-describedby={`analyst-note-help analyst-note-count${noteError ? ' analyst-note-error' : ''}`} value={reviewEntry.note} onChange={(event) => onNoteChange(event.target.value)} rows={4}/></label><p id="analyst-note-help" className="analyst-note-help">임시 저장: 이 탭의 메모리에만 보관되며 새 검사·결과 삭제·새로고침 시 사라집니다. 토큰, 개인정보, 비밀정보는 입력하지 마세요.</p><p id="analyst-note-count" className="analyst-note-count">UTF-8 {new TextEncoder().encode(reviewEntry.note).byteLength} / 2,048 bytes</p>{noteError && <p id="analyst-note-error" className="analyst-note-error" role="alert">{noteError}</p>}</section>}
+    <BeginnerFindingSummary finding={finding} label={triageLabel === '분석가 검토 가이드' ? '이 항목에서 할 일' : '비교 항목에서 할 일'}/>
     {finding.evidence_validation_status !== 'validated' && <div className="alert warning" role="note">근거 연결을 검증하지 못해 지원된 근거는 표시하지 않습니다. 자세한 상태와 코드는 기술 상세에서 확인할 수 있습니다.</div>}
     <section className="analyst-triage" aria-label={triageLabel}>
       <div className="analyst-triage-heading"><h3>분석가 검토 가이드</h3>{triage && <span className={`triage-recommendation ${triage.recommendation}`}>{triage.recommendationLabel}</span>}</div>

@@ -3,6 +3,8 @@ import type { FindingKind } from '../../api/types';
 export interface RuleReviewGuidance {
   title: string;
   finding: string;
+  /** What could happen if the unverified conditions hold. Always conditional; never a confirmed impact. */
+  impact: string;
   tasks: readonly string[];
   actions: readonly string[];
 }
@@ -10,6 +12,7 @@ export interface RuleReviewGuidance {
 export interface FindingReviewGuidance {
   title: string;
   finding: string;
+  impact: string;
   tasks: readonly string[];
   actions: readonly string[];
 }
@@ -18,6 +21,7 @@ const ruleGuidance: Readonly<Record<string, RuleReviewGuidance>> = {
   'baseline.javascript-dynamic-eval': {
     title: 'JavaScript 동적 코드 실행',
     finding: 'Semgrep이 JavaScript 동적 코드 실행 패턴과 일치하는 코드를 보고했습니다.',
+    impact: '이 위치에 외부에서 온 값(요청 본문, URL, 사용자 입력 등)이 전달된다면, 공격자가 앱이 실행되는 환경(서버 또는 브라우저)에서 원하는 코드를 실행할 수 있습니다.',
     tasks: [
       '`eval` 또는 `new Function` 사용 위치와 전달 인자를 확인합니다.',
       '호출 인자가 어디에서 생성되고 어떤 함수·변수를 거쳐 전달되는지 검토합니다.',
@@ -35,6 +39,7 @@ const ruleGuidance: Readonly<Record<string, RuleReviewGuidance>> = {
   'baseline.react-dangerous-html': {
     title: 'React의 HTML 삽입 패턴',
     finding: 'Semgrep이 JSX의 `dangerouslySetInnerHTML` 사용 패턴을 보고했습니다.',
+    impact: '`__html`에 외부에서 온 값이 정제 없이 들어간다면, 다른 사용자의 브라우저에서 악성 스크립트가 실행될 수 있습니다(XSS).',
     tasks: [
       '`dangerouslySetInnerHTML` 사용 위치와 `__html`에 전달되는 값을 확인합니다.',
       '해당 값의 생성 지점과 신뢰 경계, 외부 입력의 영향 여부를 검토합니다.',
@@ -51,6 +56,7 @@ const ruleGuidance: Readonly<Record<string, RuleReviewGuidance>> = {
   'baseline.firestore-unconditional-write': {
     title: 'Firestore 쓰기 권한 조건',
     finding: 'Semgrep이 Firestore 규칙에서 조건이 리터럴 `true`인 쓰기 권한 패턴을 보고했습니다.',
+    impact: '이 규칙이 배포돼 있다면, 해당 경로의 데이터를 로그인 여부와 관계없이 누구나 만들거나 바꾸거나 지울 수 있습니다.',
     tasks: [
       '표시된 `firestore.rules` 위치의 `allow` 선언과 해당 `match` 경로를 확인합니다.',
       '상위·중첩 `match` 범위와 겹치는 권한 선언을 함께 검토합니다.',
@@ -70,6 +76,7 @@ const genericGuidance: Readonly<Record<FindingKind, FindingReviewGuidance>> = {
   pattern: {
     title: '규칙 매치 검토',
     finding: 'Semgrep이 규칙과 일치하는 패턴을 보고했습니다. 실제 입력 영향과 실행 조건은 별도로 확인해야 합니다.',
+    impact: '규칙이 위험할 수 있다고 정의한 코드 형태입니다. 실제 영향은 이 코드에 어떤 값이 들어오고 언제 실행되는지에 따라 달라지며, 이 화면에서는 판단할 수 없습니다.',
     tasks: [
       '표시된 위치에서 규칙과 일치한 코드와 주변 조건을 확인합니다.',
       '관련 값의 출처와 실행 지점까지의 전달 경로를 검토합니다.',
@@ -84,6 +91,7 @@ const genericGuidance: Readonly<Record<FindingKind, FindingReviewGuidance>> = {
   taint: {
     title: 'Taint 흐름 검토 후보',
     finding: 'Semgrep 응답이 이 Finding을 Taint 유형으로 분류했습니다. 이는 도구 응답의 분류이며 실제 입력 도달 경로나 취약점 확정을 뜻하지 않습니다.',
+    impact: '규칙이 정의한 입력 지점의 값이 위험한 사용 지점까지 도달한다면 문제가 될 수 있습니다. 실제 도달 여부는 확인되지 않았습니다.',
     tasks: [
       '응답에서 구조적으로 확인된 Source/Sink 규칙 선언과 실제 코드 위치를 구분해 확인합니다.',
       'Source와 Sink 위치 및 두 지점 사이의 전달 경로를 코드에서 직접 검토합니다.',
@@ -98,6 +106,7 @@ const genericGuidance: Readonly<Record<FindingKind, FindingReviewGuidance>> = {
   unclassified: {
     title: '분류되지 않은 Finding 검토',
     finding: '응답에서 탐지 유형을 확정할 수 없습니다. 규칙과 근거 연결을 확인해야 합니다.',
+    impact: '탐지 유형을 확인할 수 없어 가능한 영향을 설명하지 않습니다. 규칙 ID와 코드 위치를 직접 확인하세요.',
     tasks: [
       '규칙 ID, 매치 위치와 근거 연결 상태를 확인합니다.',
       '분류에 필요한 Source/Sink 또는 패턴 문맥이 결과에 있는지 확인합니다.',
