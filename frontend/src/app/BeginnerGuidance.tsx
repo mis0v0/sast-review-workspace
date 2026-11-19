@@ -1,5 +1,6 @@
 import type { ApiFinding, ScanResponse } from '../api/types';
 import { getFindingReviewGuidance } from '../features/scans/reviewGuidance';
+import { describeScanCoverage } from '../features/scans/scanCoverage';
 
 type HelpText = { title: string; description: string; nextStep: string };
 
@@ -123,5 +124,34 @@ export function BeginnerFindingSummary({ finding, label = '이 항목에서 할 
       <div><dt>아직 확인되지 않은 것</dt><dd>외부 입력이 이 위치에 실제로 도달하는지, 이 코드가 실제로 실행되는지, 수정 방법이 앱 동작에 맞는지는 이 검사로 확인되지 않았습니다.</dd></div>
       <div><dt>수정한 뒤</dt><dd>같은 규칙 모음으로 다시 검사하세요. 이 항목이 더 이상 보이지 않아도 수정이 확인된 것은 아닙니다. 규칙은 특정 코드 형태만 찾으므로, 고친 코드와 같은 값을 다루는 다른 위치를 직접 확인하고 앱의 기존 기능이 그대로 동작하는지도 확인하세요.</dd></div>
     </dl>
+  </section>;
+}
+
+/**
+ * What this scan was configured to look for, what its response established, and what
+ * stays unknown. Configured checks are labelled as configuration, never as executed.
+ */
+export function ScanCoverageSummary({ scan, ruleProfileId, ruleProfileLabel }: { scan: ScanResponse; ruleProfileId: string | null; ruleProfileLabel: string | null }) {
+  const coverage = describeScanCoverage(scan, ruleProfileId);
+  const expanded = scan.finding_count === 0 || coverage.outcome !== 'completed';
+  return <section className={`scan-coverage-summary ${coverage.outcome}`} aria-labelledby="scan-coverage-title">
+    <details className="coverage-details" open={expanded}>
+      <summary><h3 id="scan-coverage-title">이번 검사의 범위</h3> <span className="coverage-lead">{coverage.configured
+        ? <>이 규칙 모음은 {coverage.configured.targets}에서 {coverage.configured.checks.length}가지 코드 형태만 찾도록 설정돼 있습니다.</>
+        : <>선택한 규칙 모음{ruleProfileLabel ? `(${ruleProfileLabel})` : ''}이 무엇을 찾도록 설정됐는지 이 화면에서 확인할 수 없습니다.</>}</span></summary>
+      <p className="coverage-meaning">{coverage.findingsMeaning}</p>
+      <div className="coverage-groups">
+        <div><h4>찾도록 설정된 것 <span className="evidence-tag configured">설정 기준 · 실행 확인 아님</span></h4>
+          {coverage.configured
+            ? <><p>대상: {coverage.configured.targets}</p><ul>{coverage.configured.checks.map((check) => <li key={check}>{check}</li>)}</ul></>
+            : <p>이 규칙 모음의 규칙 목록은 이 화면에 제공되지 않습니다. 기본 제공 규칙과 같다고 가정하지 않습니다.</p>}</div>
+        <div><h4>이번 검사에서 확인된 것 <span className="evidence-tag observed">검사 응답 기준</span></h4><ul>{coverage.observed.map((item) => <li key={item}>{item}</li>)}</ul></div>
+        <div><h4>확인할 수 없는 것</h4><ul>{coverage.unavailable.map((item) => <li key={item}>{item}</li>)}</ul></div>
+        <div><h4>이 규칙 모음에 포함되지 않은 것</h4>
+          {coverage.notCovered
+            ? <><p>아래 문제는 이 검사로 찾지 않습니다. 후보가 없어도 이 부분은 따로 확인해야 합니다.</p><ul>{coverage.notCovered.map((item) => <li key={item}>{item}</li>)}</ul></>
+            : <p>규칙 모음에 포함되지 않은 보안 문제는 검사되지 않습니다. 어떤 문제가 빠졌는지는 규칙 모음을 관리하는 사람에게 확인하세요.</p>}</div>
+      </div>
+    </details>
   </section>;
 }

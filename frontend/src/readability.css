@@ -390,3 +390,18 @@ select option { font-size: 1.125rem; }
 .beginner-finding-summary .evidence-tag { padding: .125rem .5rem; border: 1px solid var(--border-strong); border-radius: 999px; font-size: .875rem; font-weight: 500; color: var(--text); }
 .beginner-finding-summary .evidence-tag.observed { border-color: var(--success-line); background: var(--success-soft); }
 .beginner-finding-summary .evidence-tag.conditional { border-color: var(--warning-line); background: var(--warning-soft); }
+
+/* UX-P1: what this scan was configured to look for, what it established, and what stays unknown. */
+.scan-coverage-summary { display: grid; gap: .25rem; padding: .625rem 1rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.scan-coverage-summary.partial, .scan-coverage-summary.not_completed { border-color: var(--warning-line); }
+.scan-coverage-summary .coverage-details > summary h3 { display: inline; margin: 0 .5rem 0 0; font-size: 1rem; }
+.scan-coverage-summary .coverage-lead { color: var(--text); line-height: 1.5; overflow-wrap: anywhere; }
+.scan-coverage-summary .coverage-meaning { margin: .5rem 0 0; color: var(--text); }
+.scan-coverage-summary .coverage-details > summary { cursor: pointer; line-height: 1.5; }
+.scan-coverage-summary .coverage-groups { display: grid; gap: .75rem; margin-top: .75rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); }
+.scan-coverage-summary h4 { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin: 0 0 .25rem; font-size: 1rem; }
+.scan-coverage-summary p, .scan-coverage-summary li { color: var(--muted); line-height: 1.6; overflow-wrap: anywhere; }
+.scan-coverage-summary ul { margin: 0; padding-left: 1.25rem; }
+.scan-coverage-summary .evidence-tag { padding: .125rem .5rem; border: 1px solid var(--border-strong); border-radius: 999px; font-size: .875rem; font-weight: 500; color: var(--text); }
+.scan-coverage-summary .evidence-tag.configured { border-color: var(--warning-line); background: var(--warning-soft); }
+.scan-coverage-summary .evidence-tag.observed { border-color: var(--success-line); background: var(--success-soft); }
